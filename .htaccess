@@ -1,0 +1,13 @@
+RewriteEngine On
+RewriteBase /chatrox/
+
+# Redirect index.php to root (optional, for cleanliness)
+RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /chatrox/index\.php\ HTTP/
+RewriteRule ^index\.php$ /chatrox/ [R=301,L]
+
+# Don't rewrite for real files or directories
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Rewrite everything else to index.php
+RewriteRule ^(.*)$ index.php [QSA,L]
