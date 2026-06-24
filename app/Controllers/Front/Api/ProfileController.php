@@ -11,14 +11,14 @@ class ProfileController extends Controller
     public function updateTheme(): void
     {
         $user = Session::user();
-        $userId = $user['user_id'] ?? 0;
+        $userId = $user['id'] ?? 0;
 
         if ($userId === 0) {
             $this->jsonResponse(['error' => 'Unauthorized'], 401);
         }
 
         // Get POST data
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $input = $this->getRequestInput();
         $theme = $input['theme'] ?? '';
 
         $allowedThemes = ['indigo', 'rose', 'emerald', 'amber', 'slate'];
@@ -46,7 +46,7 @@ class ProfileController extends Controller
     public function update(): void
     {
         $user = Session::user();
-        $userId = $user['user_id'] ?? 0;
+        $userId = $user['id'] ?? 0;
         $memberId = $user['workspace_member_id'] ?? 0;
 
         if ($userId === 0 || $memberId === 0) {
@@ -54,7 +54,7 @@ class ProfileController extends Controller
         }
 
         // Get POST input
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $input = $this->getRequestInput();
 
         $firstName = trim($input['first_name'] ?? '');
         $lastName = trim($input['last_name'] ?? '');
@@ -105,6 +105,55 @@ class ProfileController extends Controller
         } catch (\Exception $e) {
             $db->rollBack();
             $this->jsonResponse(['error' => 'Database error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function uploadAvatar(): void
+    {
+        $user = Session::user();
+        $userId = $user['id'] ?? 0;
+
+        if ($userId === 0) {
+            $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+
+        if (empty($_FILES['avatar'])) {
+            $this->jsonResponse(['error' => 'No avatar file uploaded'], 400);
+        }
+
+        $file = $_FILES['avatar'];
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $this->jsonResponse(['error' => 'Failed to upload file'], 400);
+        }
+
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
+            $this->jsonResponse(['error' => 'Invalid image format. Supported: JPG, PNG, GIF, WEBP'], 400);
+        }
+
+        $avatarDir = ROOT_DIR . '/public/uploads/avatars';
+        if (!is_dir($avatarDir)) {
+            mkdir($avatarDir, 0755, true);
+        }
+
+        $filename = md5(uniqid('', true)) . '.' . $ext;
+        $destination = $avatarDir . '/' . $filename;
+
+        if (move_uploaded_file($file['tmp_name'], $destination)) {
+            $avatarUrl = 'public/uploads/avatars/' . $filename;
+            
+            $db = Model::db();
+            $stmt = $db->prepare("UPDATE users SET avatar_path = ? WHERE id = ?");
+            $stmt->execute([$avatarUrl, $userId]);
+            
+            $_SESSION['chatrox_user']['avatar_path'] = $avatarUrl;
+
+            $this->jsonResponse([
+                'success' => true,
+                'avatar_path' => BASE_URL . '/' . $avatarUrl
+            ]);
+        } else {
+            $this->jsonResponse(['error' => 'Failed to save avatar image'], 500);
         }
     }
 }

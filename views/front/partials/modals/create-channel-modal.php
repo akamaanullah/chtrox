@@ -62,60 +62,29 @@
                         <input type="text" class="cc-search" placeholder="Search people..." id="searchPeople">
                     </div>
                     <div class="cc-members-list custom-scrollbar" id="ccMembersList">
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
+                        <?php 
+                        $currentUserMemberId = (int)(\App\Core\Session::user()['workspace_member_id'] ?? 0);
+                        if (!isset($workspace_members)) {
+                            $workspace_members = \App\Models\ChannelConversation::getWorkspaceMembers();
+                        }
+                        foreach ($workspace_members as $m):
+                            $mId = (int)$m['member_id'];
+                            if ($mId === $currentUserMemberId) continue;
+                            
+                            $avatarUrl = $m['avatar_path'] ?: DEFAULT_AVATAR_URL;
+                            $displayName = htmlspecialchars($m['first_name'] . ' ' . $m['last_name']);
+                            $roleLabel = '@' . htmlspecialchars($m['username'] ?? 'member');
+                        ?>
+                        <label class="cc-member-row" data-member-name="<?php echo strtolower($displayName); ?>">
+                            <img src="<?php echo htmlspecialchars($avatarUrl); ?>"
+                                alt="<?php echo $displayName; ?>" class="cc-member-avatar">
                             <div class="cc-member-info">
-                                <span class="cc-member-name">Emma Williams</span>
-                                <span class="cc-member-handle">@emmawilliams</span>
+                                <span class="cc-member-name"><?php echo $displayName; ?></span>
+                                <span class="cc-member-handle"><?php echo $roleLabel; ?></span>
                             </div>
-                            <input type="checkbox" name="members[]" value="emma" class="cc-member-check">
+                            <input type="checkbox" name="members[]" value="<?php echo $mId; ?>" class="cc-member-check">
                         </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Oliver Mitchell</span>
-                                <span class="cc-member-handle">@olivermitchell</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="oliver" class="cc-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Charlotte Anderson</span>
-                                <span class="cc-member-handle">@charlotteanderson</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="charlotte" class="cc-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Sophia Reynolds</span>
-                                <span class="cc-member-handle">@sophiareynolds</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="sophia" class="cc-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Liam Carter</span>
-                                <span class="cc-member-handle">@liamcarter</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="liam" class="cc-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1522071823991-b9671f9d7f1f?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Design Team</span>
-                                <span class="cc-member-handle">@designteam</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="design" class="cc-member-check">
-                        </label>
+                        <?php endforeach; ?>
                     </div>
                 </div>
 

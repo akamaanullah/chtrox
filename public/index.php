@@ -56,14 +56,28 @@ $router->get('/browse-channels', 'Front\BrowseChannelsController@index', [AuthMi
 // API Routes
 $router->post('/api/messages/send', 'Front\Api\MessageController@send', [AuthMiddleware::class]);
 $router->post('/api/messages/react', 'Front\Api\MessageController@react', [AuthMiddleware::class]);
+$router->get('/api/messages/reactions', 'Front\Api\MessageController@reactionDetails', [AuthMiddleware::class]);
 $router->post('/api/messages/delete', 'Front\Api\MessageController@delete', [AuthMiddleware::class]);
 $router->post('/api/messages/edit', 'Front\Api\MessageController@edit', [AuthMiddleware::class]);
 $router->post('/api/messages/read', 'Front\Api\MessageController@markRead', [AuthMiddleware::class]);
 $router->post('/api/messages/forward', 'Front\Api\MessageController@forward', [AuthMiddleware::class]);
+$router->post('/api/messages/pin', 'Front\Api\MessageController@pin', [AuthMiddleware::class]);
+$router->get('/api/messages/history', 'Front\Api\MessageController@history', [AuthMiddleware::class]);
+$router->get('/api/messages/context', 'Front\Api\MessageController@context', [AuthMiddleware::class]);
 
 $router->post('/api/channels/create', 'Front\Api\ChannelController@create', [AuthMiddleware::class]);
 $router->post('/api/channels/join', 'Front\Api\ChannelController@join', [AuthMiddleware::class]);
 $router->post('/api/channels/leave', 'Front\Api\ChannelController@leave', [AuthMiddleware::class]);
+$router->post('/api/channels/update', 'Front\Api\ChannelController@update', [AuthMiddleware::class]);
+$router->post('/api/channels/approve-request', 'Front\Api\ChannelController@approveMemberRequest', [AuthMiddleware::class]);
+$router->post('/api/channels/reject-request', 'Front\Api\ChannelController@rejectMemberRequest', [AuthMiddleware::class]);
+
+$router->get('/api/home/summary', 'Front\Api\HomeApiController@summary', [AuthMiddleware::class]);
+$router->get('/api/search', 'Front\Api\SearchController@index', [AuthMiddleware::class]);
+
+$router->get('/api/app/page', 'Front\Api\NavigateController@page', [AuthMiddleware::class]);
+
+$router->get('/api/giphy/gifs', 'Front\Api\GiphyController@gifs', [AuthMiddleware::class]);
 
 $router->post('/api/files/upload', 'Front\Api\FileController@upload', [AuthMiddleware::class]);
 
@@ -71,6 +85,7 @@ $router->get('/files/download/{id}', 'Front\FilesController@download', [AuthMidd
 
 $router->post('/api/profile/update', 'Front\Api\ProfileController@update', [AuthMiddleware::class]);
 $router->post('/api/profile/theme', 'Front\Api\ProfileController@updateTheme', [AuthMiddleware::class]);
+$router->post('/api/profile/avatar', 'Front\Api\ProfileController@uploadAvatar', [AuthMiddleware::class]);
 
 // Auth routes
 $router->get('/login', 'Front\AuthController@login', [GuestMiddleware::class]);

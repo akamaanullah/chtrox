@@ -252,6 +252,39 @@
     </div>
 </div>
 
+<!-- Announcement Details Modal -->
+<div class="modal-overlay modal-overlay--security" id="announcementModal">
+    <div class="modal-content modal-content--security">
+        <div class="modal-header-security">
+            <div class="security-header-left">
+                <div class="security-icon-wrap">
+                    <span class="security-icon-flash" id="announcementModalIcon">📢</span>
+                </div>
+                <h2 id="announcementModalTitle">Announcement</h2>
+            </div>
+            <span class="tag important" id="announcementModalTag">UPDATE</span>
+        </div>
+
+        <div class="modal-body-security">
+            <div class="modal-scroll-area-security custom-scrollbar">
+                <div class="security-details-text" id="announcementModalBody"></div>
+                <div class="posted-by-wrap">
+                    <div class="posted-avatar" id="announcementModalAvatar">A</div>
+                    <div class="posted-info">
+                        <span class="posted-label">POSTED BY</span>
+                        <span class="posted-name" id="announcementModalAuthor">Workspace Admin</span>
+                    </div>
+                    <span class="posted-date" id="announcementModalDate"></span>
+                </div>
+            </div>
+
+            <div class="modal-footer-security">
+                <button type="button" class="security-close-btn" onclick="closeAnnouncementModal()">CLOSE</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Workspace Security Upgrade Modal -->
 <div class="modal-overlay modal-overlay--security" id="securityModal">
     <div class="modal-content modal-content--security">

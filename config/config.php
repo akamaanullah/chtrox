@@ -15,6 +15,7 @@ $dynamicBaseUrl = rtrim($protocol . '://' . $host . $basePath, '/');
 define('BASE_URL', $_ENV['BASE_URL'] ?? $dynamicBaseUrl);
 define('APP_NAME', $_ENV['APP_NAME'] ?? 'ChatRox');
 define('APP_DEBUG', filter_var($_ENV['APP_DEBUG'] ?? 'true', FILTER_VALIDATE_BOOLEAN));
+define('DEFAULT_AVATAR_URL', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150');
 
 define('DB_HOST', $_ENV['DB_HOST'] ?? '127.0.0.1');
 define('DB_PORT', $_ENV['DB_PORT'] ?? '3306');
@@ -24,8 +25,20 @@ define('DB_NAME', $_ENV['DB_DATABASE'] ?? $_ENV['DB_NAME'] ?? '');
 
 define('GIPHY_API_KEY', $_ENV['GIPHY_API_KEY'] ?? '');
 
+define('MAX_FILE_SIZE_BYTES', (int)($_ENV['MAX_FILE_SIZE_MB'] ?? 40) * 1024 * 1024);
+
 define('FRONT_ASSETS', [
     'global' => [
+        'js/shared/file-type-info.js',
+        'js/shared/lucide-scope.js',
+        'js/shared/toast.js',
+        'js/shared/giphy.js',
+        'js/shared/file-upload.js',
+        'js/shared/message-media.js',
+        'js/shared/message-focus.js',
+        'js/shared/message-date-divider.js',
+        'js/shared/app-router.js',
+        'js/tabs/home/home-live.js',
         'js/script.js',
         'js/panels/profile.js',
         'js/modals/create-channel.js',
@@ -35,6 +48,10 @@ define('FRONT_ASSETS', [
     'home' => [
         'js/tabs/home/clocks.js',
         'js/tabs/home/focus-timer.js',
+        'js/tabs/home/home-search.js',
+    ],
+    'dms_sidebar' => [
+        'js/tabs/dms/sidebar.js',
     ],
     'dms_chat' => [
         'js/tabs/dms/chat.js',

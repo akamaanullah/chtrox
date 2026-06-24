@@ -1,8 +1,27 @@
 <?php
 
 use App\Core\View;
+use App\Helpers\MessageDateDivider;
+
+$has_older_messages = !empty($has_older_messages);
+$oldest_message_id = (int)($oldest_message_id ?? 0);
+$channel_members = $channel_members ?? [];
+$currentUserMemberId = (int)(\App\Core\Session::user()['workspace_member_id'] ?? 0);
+$members_for_receipts = array_values(array_filter($channel_members, function($m) use ($currentUserMemberId) {
+    return (int)$m['member_id'] !== $currentUserMemberId;
+}));
+
+$currentUserChannelRole = $current_user_channel_role ?? null;
+if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
+    $roleStmt = \App\Core\Model::db()->prepare("
+        SELECT role FROM channel_members
+        WHERE channel_id = ? AND workspace_member_id = ? AND left_at IS NULL
+    ");
+    $roleStmt->execute([(int)$active_channel['id'], $currentUserMemberId]);
+    $currentUserChannelRole = $roleStmt->fetchColumn() ?: 'member';
+}
 ?>
-<div class="dm-chat-screen" data-conversation-id="<?php echo $active_channel['conversation_id']; ?>" data-channel-id="<?php echo $active_channel['id']; ?>">
+<div class="dm-chat-screen" data-conversation-id="<?php echo $active_channel['conversation_id']; ?>" data-channel-id="<?php echo $active_channel['id']; ?>" data-has-older="<?php echo $has_older_messages ? '1' : '0'; ?>" data-oldest-message-id="<?php echo $oldest_message_id; ?>" data-channel-members="<?php echo htmlspecialchars(json_encode($members_for_receipts), ENT_QUOTES, 'UTF-8'); ?>" data-all-members="<?php echo htmlspecialchars(json_encode($channel_members), ENT_QUOTES, 'UTF-8'); ?>" data-all-files="<?php echo htmlspecialchars(json_encode($conversation_files), ENT_QUOTES, 'UTF-8'); ?>">
     <div class="dm-chat-header">
         <a href="channels" class="dm-chat-back" title="Back to Channels">
             <i data-lucide="arrow-left" size="20"></i>
@@ -38,14 +57,28 @@ use App\Core\View;
     </div>
 
     <div class="dm-chat-messages" id="dmChatMessages">
+        <div class="dm-load-more-wrap dm-load-more-wrap--hidden" id="dmLoadNewerWrap" style="margin-bottom: 8px;">
+            <button type="button" class="dm-load-more js-dm-load-newer" id="dmLoadNewer">Load newer messages</button>
+        </div>
         <?php foreach ($messages as $i => $m): ?>
-            <div class="dm-chat-msg dm-chat-msg--<?php echo $m['side']; ?> <?php echo $i >= $initial_visible ? 'dm-chat-msg--hidden' : ''; ?>"
-                id="dm-msg-<?php echo $m['id']; ?>" data-msg-index="<?php echo $m['id']; ?>" <?php echo $i >= $initial_visible ? ' data-initially-hidden="1"' : ''; ?>>
+            <?php if (($m['message_type'] ?? '') === 'system' || ($m['side'] ?? '') === 'system'): ?>
+                <?php View::render('partials/chat/system-divider.php', [
+                    'id' => $m['id'],
+                    'text' => $m['system_text'] ?? $m['text'] ?? '',
+                    'created_at' => $m['created_at'] ?? '',
+                ]); ?>
+                <?php MessageDateDivider::maybeRenderAfter($messages, $i); ?>
+            <?php else: ?>
+            <div class="dm-chat-msg dm-chat-msg--<?php echo $m['side']; ?> <?php echo $i >= $initial_visible ? 'dm-chat-msg--hidden' : ''; ?><?php echo !empty($m['deleted_for_everyone']) ? ' dm-chat-msg--deleted-everyone' : ''; ?><?php echo !empty($m['is_pinned']) ? ' dm-chat-msg--pinned' : ''; ?>"
+                id="dm-msg-<?php echo $m['id']; ?>" data-msg-index="<?php echo $m['id']; ?>" data-created-at="<?php echo htmlspecialchars($m['created_at'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" <?php echo $i >= $initial_visible ? ' data-initially-hidden="1"' : ''; ?><?php echo !empty($m['deleted_for_everyone']) ? ' data-deleted-everyone="1"' : ''; ?><?php echo !empty($m['is_pinned']) ? ' data-pinned="1"' : ''; ?>>
                 <div class="dm-msg-body">
-                    <?php if ($m['side'] === 'them'): ?>
+                    <?php if ($m['side'] === 'them' && empty($m['deleted_for_everyone'])): ?>
                         <span
                             class="dm-msg-sender"><?php echo htmlspecialchars(isset($m['sender']) ? $m['sender'] : 'User'); ?></span>
                     <?php endif; ?>
+                    <?php if (!empty($m['deleted_for_everyone'])): ?>
+                        <?php View::render('partials/chat/deleted-message-bubble.php'); ?>
+                    <?php else: ?>
                     <?php
                     $attachments = $m['attachments'] ?? [];
                     $has_attachments = !empty($attachments);
@@ -54,7 +87,7 @@ use App\Core\View;
                     $images = array_values($images);
                     $docs = array_values($docs);
                     ?>
-                    <div class="dm-msg-bubble<?php echo ($has_attachments || $m['message_type'] === 'gif') ? ' dm-msg-bubble--media' : ''; ?>">
+                    <div class="dm-msg-bubble<?php echo ($has_attachments || $m['message_type'] === 'gif' || $m['message_type'] === 'voice') ? ' dm-msg-bubble--media' : ''; ?>">
                         <?php if (!empty($m['is_forwarded'])): ?>
                             <?php View::render('partials/chat/forward-label.php'); ?>
                         <?php endif; ?>
@@ -68,6 +101,20 @@ use App\Core\View;
                             <div class="dm-msg-images dm-msg-images--single">
                                 <img src="<?php echo htmlspecialchars($m['text']); ?>" alt="" class="dm-msg-img js-msg-img" loading="lazy">
                             </div>
+                        <?php elseif ($m['message_type'] === 'voice'): ?>
+                            <?php
+                            $voiceAudio = null;
+                            foreach ($attachments as $att) {
+                                if (($att['category'] ?? '') !== 'image') {
+                                    $voiceAudio = $att;
+                                    break;
+                                }
+                            }
+                            if ($voiceAudio):
+                                $voiceAudio['duration_seconds'] = (int)($m['voice_duration_seconds'] ?? 0);
+                                View::render('partials/chat/voice-player.php', ['audio' => $voiceAudio]);
+                            endif;
+                            ?>
                         <?php elseif ($m['text']): ?>
                             <p><?php echo $m['text']; ?></p>
                         <?php endif; ?>
@@ -100,18 +147,19 @@ use App\Core\View;
                             <?php endif; ?>
                         <?php endif; ?>
 
-                        <?php if (!empty($docs)): ?>
+                        <?php if (!empty($docs) && ($m['message_type'] ?? '') !== 'voice'): ?>
                             <div class="dm-msg-files">
                                 <?php foreach ($docs as $d): ?>
                                     <?php View::render('partials/chat/file-card.php', [
                                         'file_name' => $d['original_name'], 
-                                        'file_size' => number_format($d['size_bytes'] / 1024, 2) . ' KB',
+                                        'file_size' => \App\Helpers\FileUploadPolicy::formatSize((int)$d['size_bytes']),
                                         'file_url' => $d['url']
                                     ]); ?>
                                 <?php endforeach; ?>
                             </div>
                         <?php endif; ?>
                     </div>
+                    <?php endif; ?>
                     <div class="dm-msg-reactions">
                         <?php if (!empty($m['reactions'])): ?>
                             <?php foreach ($m['reactions'] as $r): ?>
@@ -155,12 +203,35 @@ use App\Core\View;
                         aria-label="Delete"><i data-lucide="trash-2" size="16"></i></button>
                 </div>
             </div>
+            <?php MessageDateDivider::maybeRenderAfter($messages, $i); ?>
+            <?php endif; ?>
         <?php endforeach; ?>
-        <?php if (count($messages) > $initial_visible): ?>
+        <?php if (count($messages) > $initial_visible || $has_older_messages): ?>
         <div class="dm-load-more-wrap" id="dmLoadMoreWrap">
             <button type="button" class="dm-load-more js-dm-load-more" id="dmLoadMore">Read more</button>
         </div>
         <?php endif; ?>
+        <div class="dm-chat-search-empty-state" id="dmChatSearchEmptyState" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; text-align: center; color: #94a3b8; flex-shrink: 0; margin: auto;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 12px; color: #94a3b8; opacity: 0.7;">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.3-4.3"></path>
+                <path d="m15 9-6 6"></path>
+                <path d="m9 9 6 6"></path>
+            </svg>
+            <div style="font-weight: 600; font-size: 15px; color: #64748b;">No matches in visible messages</div>
+            <div style="font-size: 13px; margin-top: 6px; max-width: 280px; line-height: 1.4;">Use the dropdown below the search input to check the complete conversation history.</div>
+        </div>
+    </div>
+
+    <div class="dm-voice-permission-notice" id="dmVoicePermissionNotice" hidden>
+        <div class="dm-voice-permission-notice__text">
+            <strong>Microphone access needed</strong>
+            <p id="dmVoicePermissionMessage">Allow microphone access to record voice notes.</p>
+        </div>
+        <button type="button" class="dm-voice-permission-retry js-voice-permission-retry">Allow microphone</button>
+        <button type="button" class="dm-voice-permission-dismiss js-voice-permission-dismiss" aria-label="Dismiss">
+            <i data-lucide="x" size="16"></i>
+        </button>
     </div>
 
     <!-- Quick reaction picker (WhatsApp style: Heart, Thumb, Emoji) -->
@@ -172,6 +243,19 @@ use App\Core\View;
         <button type="button" class="dm-reaction-option" data-emoji="😮" title="Wow" aria-label="Wow">😮</button>
         <button type="button" class="dm-reaction-option" data-emoji="😢" title="Sad" aria-label="Sad">😢</button>
         <button type="button" class="dm-reaction-option" data-emoji="🙏" title="Thanks" aria-label="Thanks">🙏</button>
+    </div>
+
+    <div class="reaction-overlay" id="chReactionOverlay" hidden></div>
+    <div class="reaction-modal" id="chReactionModal" role="dialog" aria-labelledby="chReactionModalTitle" aria-modal="true" hidden>
+        <div class="reaction-modal-inner">
+            <div class="reaction-modal-header">
+                <div class="reaction-modal-title" id="chReactionModalTitle">Reactions</div>
+                <button type="button" class="reaction-modal-close js-ch-reaction-close" aria-label="Close">
+                    <i data-lucide="x" size="20"></i>
+                </button>
+            </div>
+            <div class="reaction-modal-body" id="chReactionModalBody"></div>
+        </div>
     </div>
 
     <!-- Forward message modal – search, people, groups, scroll, select count -->
@@ -261,10 +345,11 @@ use App\Core\View;
                 </div>
                 <button type="button" class="dm-chat-tool-btn dm-chat-tool-btn--media" data-action="attach"
                     title="Attach file" aria-label="Attach file"><i data-lucide="paperclip" size="18"></i></button>
-                <button type="button" class="dm-chat-tool-btn dm-chat-tool-btn--media" data-action="voice"
-                    title="Voice note" aria-label="Voice note"><i data-lucide="mic" size="18"></i></button>
+                <button type="button" class="dm-chat-tool-btn dm-chat-tool-btn--media js-voice-toggle" data-action="voice"
+                    title="Voice note" aria-label="Voice note" aria-pressed="false"><i data-lucide="mic" size="18"></i></button>
             </div>
         </div>
+        <div class="dm-mention-dropdown" id="dmMentionDropdown" hidden></div>
         <form class="dm-chat-form" id="dmChatForm" action="#" method="post">
             <input type="file" id="dmChatFileInput" class="dm-chat-file-input" multiple accept="*/*"
                 aria-label="Attach file" hidden>
@@ -281,7 +366,15 @@ use App\Core\View;
             </div>
             <div class="dm-chat-input-area" id="dmChatInput" contenteditable="true" role="textbox" aria-multiline="true"
                 aria-label="Type a message" data-placeholder="Type a message..."></div>
-            <button type="submit" class="dm-chat-send" title="Send">
+            <div class="dm-voice-recorder" id="dmVoiceRecorder" hidden>
+                <button type="button" class="dm-voice-recording-cancel js-voice-recording-cancel" aria-label="Cancel recording">
+                    <i data-lucide="trash-2" size="18"></i>
+                </button>
+                <span class="dm-voice-recording-dot" aria-hidden="true"></span>
+                <span class="dm-voice-recording-time" id="dmVoiceRecordingTime">0:00</span>
+                <canvas class="dm-voice-waveform" id="dmVoiceWaveform" aria-hidden="true"></canvas>
+            </div>
+            <button type="submit" class="dm-chat-send" id="dmChatSend" title="Send">
                 <i data-lucide="send" size="18"></i>
             </button>
         </form>
@@ -322,10 +415,16 @@ use App\Core\View;
                     <span class="dm-details-subtitle">CONTACT DETAILS</span>
                 </div>
                 <div class="dm-details-header-actions">
-                    <button type="button" class="btn-edit-channel-small js-open-edit-channel"
-                        title="Edit Channel Details & Members">
-                        Edit <i data-lucide="edit-2" size="12"></i>
-                    </button>
+                    <?php 
+                    $isChannelAdmin = in_array($currentUserChannelRole ?? 'member', ['owner', 'admin'], true);
+                    $isDefault = !empty($active_channel['is_default']);
+                    if ($isChannelAdmin && !$isDefault): 
+                    ?>
+                        <button type="button" class="btn-edit-channel-small js-open-edit-channel"
+                            title="Edit Channel Details & Members">
+                            Edit <i data-lucide="edit-2" size="12"></i>
+                        </button>
+                    <?php endif; ?>
                     <button type="button" class="dm-details-close js-details-close" aria-label="Close">
                         <i data-lucide="x" size="16"></i>
                     </button>
@@ -336,10 +435,14 @@ use App\Core\View;
                     data-tab="profile" id="dmDetailsTabProfile">Profile</button>
                 <button type="button" class="dm-details-tab" role="tab" aria-selected="false" data-tab="media"
                     id="dmDetailsTabMedia">Media</button>
-                <button type="button" class="dm-details-tab" role="tab" aria-selected="false" data-tab="files"
+<button type="button" class="dm-details-tab" role="tab" aria-selected="false" data-tab="files"
                     id="dmDetailsTabFiles">Files</button>
                 <button type="button" class="dm-details-tab" role="tab" aria-selected="false" data-tab="pinned"
                     id="dmDetailsTabPinned">Pinned</button>
+                <?php if (!empty($pending_join_requests)): ?>
+                <button type="button" class="dm-details-tab" role="tab" aria-selected="false" data-tab="requests"
+                    id="dmDetailsTabRequests">Requests (<?php echo count($pending_join_requests); ?>)</button>
+                <?php endif; ?>
             </div>
             <div class="dm-details-search-wrap dm-details-search-wrap--hidden" id="dmDetailsSearchWrap">
                 <div class="search-box">
@@ -359,66 +462,42 @@ use App\Core\View;
                         <span class="dm-details-handle">WORKSPACE CHANNEL</span>
                         <div class="dm-details-bio-wrap">
                             <span class="dm-details-bio-label">CHANNEL PURPOSE</span>
-                            <p class="dm-details-bio">Team-wide discussions and project alignment.</p>
+                            <p class="dm-details-bio"><?php echo htmlspecialchars($active_channel['description'] ?? 'Team-wide discussions and project alignment.'); ?></p>
                         </div>
+
+                        <?php if (!$isDefault && ($currentUserChannelRole ?? 'member') !== 'owner'): ?>
+                        <div class="channel-actions-section" style="margin-top: 15px; margin-bottom: 20px; width: 100%;">
+                            <button type="button" class="profile-panel-btn profile-panel-btn--danger js-leave-active-channel" 
+                                data-channel-id="<?php echo (int)$active_channel['id']; ?>" 
+                                data-channel-name="<?php echo htmlspecialchars($active_channel['name']); ?>">
+                                <i data-lucide="log-out" size="16"></i>
+                                Leave Channel
+                            </button>
+                        </div>
+                        <?php endif; ?>
 
                         <div class="channel-members-section">
                             <div class="cms-header">
-                                <span class="dm-details-bio-label">MEMBERS (4)</span>
+                                <span class="dm-details-bio-label">MEMBERS (<?php echo count($channel_members); ?>)</span>
                             </div>
                             <div class="cms-list">
-                                <!-- Member 1 -->
+                                <?php foreach ($channel_members as $member): ?>
                                 <div class="cms-item">
                                     <div class="cms-item-left">
-                                        <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150"
-                                            alt="Oliver" class="cms-avatar">
+                                        <img src="<?php echo htmlspecialchars($member['avatar']); ?>"
+                                            alt="<?php echo htmlspecialchars($member['name']); ?>" class="cms-avatar">
                                         <div class="cms-info">
-                                            <span class="cms-name">Oliver Mitchell</span>
-                                            <span class="cms-role">Admin</span>
+                                            <span class="cms-name">
+                                                <?php echo htmlspecialchars($member['name']); ?>
+                                                <?php if (in_array($member['channel_role'] ?? 'member', ['owner', 'admin'], true)): ?>
+                                                    <span class="cms-admin-badge" style="font-size: 10px; font-weight: 600; color: #0f766e; background: #f0fdf4; padding: 1px 6px; border-radius: 4px; margin-left: 6px; display: inline-block; vertical-align: middle;">Admin</span>
+                                                <?php endif; ?>
+                                            </span>
+                                            <span class="cms-role"><?php echo ($member['channel_role'] ?? 'member') === 'owner' ? 'Admin' : ucfirst(htmlspecialchars($member['channel_role'] ?? 'member')); ?></span>
                                         </div>
                                     </div>
-                                    <button class="btn-remove-member" title="Remove member"><i data-lucide="user-minus"
-                                            size="14"></i></button>
                                 </div>
-                                <!-- Member 2 -->
-                                <div class="cms-item">
-                                    <div class="cms-item-left">
-                                        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
-                                            alt="Emma" class="cms-avatar">
-                                        <div class="cms-info">
-                                            <span class="cms-name">Emma Williams</span>
-                                            <span class="cms-role">Member</span>
-                                        </div>
-                                    </div>
-                                    <button class="btn-remove-member" title="Remove member"><i data-lucide="user-minus"
-                                            size="14"></i></button>
-                                </div>
-                                <!-- Member 3 -->
-                                <div class="cms-item">
-                                    <div class="cms-item-left">
-                                        <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=150"
-                                            alt="David" class="cms-avatar">
-                                        <div class="cms-info">
-                                            <span class="cms-name">David Chen</span>
-                                            <span class="cms-role">Member</span>
-                                        </div>
-                                    </div>
-                                    <button class="btn-remove-member" title="Remove member"><i data-lucide="user-minus"
-                                            size="14"></i></button>
-                                </div>
-                                <!-- Member 4 -->
-                                <div class="cms-item">
-                                    <div class="cms-item-left">
-                                        <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150"
-                                            alt="Sophia" class="cms-avatar">
-                                        <div class="cms-info">
-                                            <span class="cms-name">Sophia Taylor</span>
-                                            <span class="cms-role">Member</span>
-                                        </div>
-                                    </div>
-                                    <button class="btn-remove-member" title="Remove member"><i data-lucide="user-minus"
-                                            size="14"></i></button>
-                                </div>
+                                <?php endforeach; ?>
                             </div>
                         </div>
                     </div>
@@ -426,38 +505,87 @@ use App\Core\View;
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentMedia" role="tabpanel"
                     hidden>
                     <div class="dm-details-media-grid" id="dmDetailsMediaGrid">
-                        <?php foreach ($common_media as $ms): ?>
-                            <img src="<?php echo htmlspecialchars($ms); ?>" alt="" class="dm-details-media-thumb"
-                                loading="lazy">
+                        <?php foreach ($conversation_media as $item): ?>
+                            <button type="button" class="dm-details-media-thumb-btn js-details-media-jump"
+                                data-message-id="<?php echo (int)$item['message_id']; ?>"
+                                aria-label="<?php echo htmlspecialchars($item['label']); ?>">
+                                <img src="<?php echo htmlspecialchars($item['url']); ?>" alt="<?php echo htmlspecialchars($item['label']); ?>"
+                                    class="dm-details-media-thumb" loading="lazy">
+                            </button>
                         <?php endforeach; ?>
                     </div>
+                    <div class="dm-details-empty" id="dmDetailsMediaEmpty"<?php echo !empty($conversation_media) ? ' hidden' : ''; ?>>No media shared yet</div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentFiles" role="tabpanel"
                     hidden>
-                    <div class="dm-details-files-list">
-                        <a href="#" class="dm-details-file-row" download>
-                            <span class="dm-details-file-icon"><i data-lucide="file-text" size="18"></i></span>
-                            <div class="dm-details-file-info">
-                                <span class="dm-details-file-name">Project_Roadmap_2024.pdf</span>
-                                <span class="dm-details-file-size">2.4 MB</span>
-                            </div>
-                            <i data-lucide="download" size="18" class="dm-details-file-dl"></i>
-                        </a>
-                        <a href="#" class="dm-details-file-row" download>
-                            <span class="dm-details-file-icon"><i data-lucide="file-text" size="18"></i></span>
-                            <div class="dm-details-file-info">
-                                <span class="dm-details-file-name">password_configs.txt</span>
-                                <span class="dm-details-file-size">0.05 MB</span>
-                            </div>
-                            <i data-lucide="download" size="18" class="dm-details-file-dl"></i>
-                        </a>
+                    <div class="dm-details-files-list" id="dmDetailsFilesList">
+                        <?php foreach ($conversation_files as $file): ?>
+                            <a href="<?php echo htmlspecialchars($file['url']); ?>" class="dm-details-file-row" download>
+                                <span class="dm-details-file-icon"><i data-lucide="file-text" size="18"></i></span>
+                                <div class="dm-details-file-info">
+                                    <span class="dm-details-file-name"><?php echo htmlspecialchars($file['name']); ?></span>
+                                    <span class="dm-details-file-size"><?php echo htmlspecialchars($file['size_label']); ?></span>
+                                </div>
+                                <i data-lucide="download" size="18" class="dm-details-file-dl"></i>
+                            </a>
+                        <?php endforeach; ?>
                     </div>
+                    <div class="dm-details-empty" id="dmDetailsFilesEmpty"<?php echo !empty($conversation_files) ? ' hidden' : ''; ?>>No files shared yet</div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentPinned" role="tabpanel"
                     hidden>
                     <div class="dm-details-pinned-list" id="dmDetailsPinnedList"></div>
                     <div class="dm-details-pinned-empty" id="dmDetailsPinnedEmpty">No pinned messages</div>
                 </div>
+                <?php if (!empty($pending_join_requests)): ?>
+                <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentRequests" role="tabpanel"
+                    hidden>
+                    <div class="dm-details-requests-list">
+                        <?php foreach ($pending_join_requests as $request): ?>
+                        <div class="dm-details-request-row" data-request-id="<?php echo (int)$request['id']; ?>">
+                            <div class="dm-details-request-info">
+                                <img src="<?php echo htmlspecialchars($request['avatar_url'] ?? ''); ?>"
+                                    alt="<?php echo htmlspecialchars($request['first_name'] . ' ' . $request['last_name']); ?>"
+                                    class="dm-details-request-avatar">
+                                <div class="dm-details-request-user">
+                                    <span class="dm-details-request-name">
+                                        <?php echo htmlspecialchars($request['first_name'] . ' ' . $request['last_name']); ?>
+                                    </span>
+                                    <span class="dm-details-request-date">
+                                        Requested <?php 
+                                        $createdAt = new \DateTime($request['created_at']);
+                                        $now = new \DateTime();
+                                        $diff = $now->diff($createdAt);
+                                        if ($diff->days > 0) {
+                                            echo htmlspecialchars($diff->days) . 'd ago';
+                                        } elseif ($diff->h > 0) {
+                                            echo htmlspecialchars($diff->h) . 'h ago';
+                                        } elseif ($diff->i > 0) {
+                                            echo htmlspecialchars($diff->i) . 'm ago';
+                                        } else {
+                                            echo 'just now';
+                                        }
+                                        ?>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="dm-details-request-actions">
+                                <button type="button" class="btn-approve-request js-approve-request"
+                                    data-request-id="<?php echo (int)$request['id']; ?>"
+                                    title="Approve">
+                                    <i data-lucide="check" size="16"></i>
+                                </button>
+                                <button type="button" class="btn-reject-request js-reject-request"
+                                    data-request-id="<?php echo (int)$request['id']; ?>"
+                                    title="Reject">
+                                    <i data-lucide="x" size="16"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -491,11 +619,12 @@ use App\Core\View;
         </div>
         <div class="cc-modal-body custom-scrollbar">
             <form id="editChannelForm" class="cc-form">
+                <input type="hidden" name="channel_id" id="ecChannelId" value="<?php echo (int)($active_channel['id'] ?? 0); ?>">
                 <div class="cc-field">
                     <label class="cc-label">CHANNEL NAME</label>
                     <div class="cc-input-wrap cc-input-wrap--hash">
                         <span class="cc-input-prefix">#</span>
-                        <input type="text" name="channel_name" id="ecChannelName" value="general" required
+                        <input type="text" name="channel_name" id="ecChannelName" value="<?php echo htmlspecialchars($active_channel['raw_name'] ?? ''); ?>" required
                             maxlength="80" class="cc-input">
                     </div>
                 </div>
@@ -503,76 +632,51 @@ use App\Core\View;
                 <div class="cc-field">
                     <label class="cc-label">CHANNEL PURPOSE</label>
                     <textarea name="channel_purpose" id="ecChannelPurpose"
-                        class="edit-channel-textarea">Team-wide discussions and project alignment.</textarea>
+                        class="edit-channel-textarea"><?php echo htmlspecialchars($active_channel['description'] ?? ''); ?></textarea>
                 </div>
 
                 <div class="cc-field" id="ecSpecificPeopleField">
                     <div class="cc-specific-header">
                         <label class="cc-label">MANAGE MEMBERS</label>
-                        <span class="cc-selected-count" id="ecSelectedCount">4 members</span>
+                        <span class="cc-selected-count" id="ecSelectedCount">0 members</span>
                     </div>
                     <div class="cc-search-wrap">
                         <i data-lucide="search" size="18"></i>
                         <input type="text" class="cc-search" placeholder="Search people..." id="ecSearchPeople">
                     </div>
                     <div class="cc-members-list custom-scrollbar" id="ecMembersList">
-                        <!-- Existing Members -->
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
+                        <?php 
+                        $current_member_ids = array_column($channel_members, 'member_id');
+                        $workspace_members = $workspace_members ?? [];
+                        foreach ($workspace_members as $m):
+                            $mId = (int)$m['member_id'];
+                            $isJoined = in_array($mId, $current_member_ids, true);
+                            $isCreator = ((int)($active_channel['created_by'] ?? 0) === $mId);
+                            $isDefault = !empty($active_channel['is_default']);
+                            
+                            // Checkbox is frozen/disabled if they are the channel creator or if this is a default channel
+                            $isDisabled = ($isCreator || $isDefault);
+                            
+                            $avatarUrl = $m['avatar_path'] ?: DEFAULT_AVATAR_URL;
+                            $displayName = htmlspecialchars($m['first_name'] . ' ' . $m['last_name']);
+                            $roleLabel = ($isCreator || ($m['role'] ?? '') === 'owner') ? 'Admin' : (ucfirst($m['role'] ?? 'Member'));
+                            $checkedAttr = $isJoined ? 'checked' : '';
+                            $disabledAttr = $isDisabled ? 'disabled' : '';
+                        ?>
+                        <label class="cc-member-row" data-member-name="<?php echo strtolower($displayName); ?>">
+                            <img src="<?php echo htmlspecialchars($avatarUrl); ?>"
+                                alt="<?php echo $displayName; ?>" class="cc-member-avatar">
                             <div class="cc-member-info">
-                                <span class="cc-member-name">Oliver Mitchell</span>
-                                <span class="cc-member-handle">Admin</span>
+                                <span class="cc-member-name"><?php echo $displayName; ?></span>
+                                <span class="cc-member-handle"><?php echo $roleLabel; ?></span>
                             </div>
-                            <input type="checkbox" name="members[]" value="oliver" class="cc-member-check" checked
-                                disabled>
+                            <input type="checkbox" name="members[]" value="<?php echo $mId; ?>" class="cc-member-check js-ec-member-check" <?php echo $checkedAttr; ?> <?php echo $disabledAttr; ?>>
+                            <?php if ($isDisabled && $isJoined): ?>
+                                <!-- Hidden input to ensure that disabled checked values are still submitted in the form request -->
+                                <input type="hidden" name="members[]" value="<?php echo $mId; ?>">
+                            <?php endif; ?>
                         </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Emma Williams</span>
-                                <span class="cc-member-handle">Member</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="emma" class="cc-member-check" checked>
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">David Chen</span>
-                                <span class="cc-member-handle">Member</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="david" class="cc-member-check" checked>
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Sophia Taylor</span>
-                                <span class="cc-member-handle">Member</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="sophia" class="cc-member-check" checked>
-                        </label>
-                        <!-- Other Workspace Members -->
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Charlotte Anderson</span>
-                                <span class="cc-member-handle">@charlotteanderson</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="charlotte" class="cc-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Liam Carter</span>
-                                <span class="cc-member-handle">@liamcarter</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="liam" class="cc-member-check">
-                        </label>
+                        <?php endforeach; ?>
                     </div>
                 </div>
 

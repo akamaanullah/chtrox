@@ -3,7 +3,7 @@
         <div class="greeting">
             <div class="office-tag">OFFICE HQ DASHBOARD</div>
             <h1>Welcome, <span class="text-primary"><?php echo htmlspecialchars($home_greeting['user_name']); ?></span> 👋</h1>
-            <p><?php echo htmlspecialchars($home_greeting['date_label']); ?></p>
+            <p id="homeDateLabel"><?php echo htmlspecialchars($home_greeting['date_label']); ?></p>
         </div>
     </div>
 
@@ -24,7 +24,7 @@
                     </div>
                 <?php else: ?>
                     <span class="stat-value"<?php echo !empty($stat['value_id']) ? ' id="' . htmlspecialchars($stat['value_id']) . '"' : ''; ?>><?php echo htmlspecialchars($stat['value']); ?></span>
-                    <span class="stat-footer <?php echo htmlspecialchars($stat['footer_class'] ?? ''); ?>">
+                    <span class="stat-footer <?php echo htmlspecialchars($stat['footer_class'] ?? ''); ?>"<?php echo !empty($stat['footer_id']) ? ' id="' . htmlspecialchars($stat['footer_id']) . '"' : ''; ?>>
                         <?php echo htmlspecialchars($stat['footer']); ?>
                     </span>
                 <?php endif; ?>
@@ -53,21 +53,35 @@
     </div>
 
     <div class="bottom-grid">
-        <div class="global-search-card">
+        <div class="global-search-card" id="homeGlobalSearch">
             <div class="search-card-header">
                 <div class="search-icon-box"><i data-lucide="search" size="20"></i></div>
                 <h3>Global Workspace Search</h3>
             </div>
             <div class="search-input-wrap">
                 <input type="text" placeholder="Search messages, files, or people across Chatrox..."
-                    class="dash-search-input">
-                <div class="search-submit">
+                    class="dash-search-input" id="homeGlobalSearchInput" autocomplete="off" aria-label="Global workspace search">
+                <button type="button" class="search-submit" id="homeGlobalSearchSubmit" aria-label="Search">
                     <i data-lucide="arrow-right" size="18"></i>
-                </div>
+                </button>
             </div>
-            <div class="quick-tags">
+            <div class="home-search-results" id="homeGlobalSearchResults" hidden></div>
+            <div class="quick-tags" id="homeQuickTags">
                 <?php foreach ($home_search_tags as $tag): ?>
-                    <span class="q-tag"><?php echo htmlspecialchars($tag); ?></span>
+                    <?php
+                    $tagLabel = is_array($tag) ? ($tag['label'] ?? '') : (string)$tag;
+                    $tagType = is_array($tag) ? ($tag['type'] ?? 'text') : 'text';
+                    $tagQuery = is_array($tag) ? ($tag['query'] ?? $tagLabel) : $tagLabel;
+                    $tagSlug = is_array($tag) ? ($tag['slug'] ?? '') : '';
+                    $tagUsername = is_array($tag) ? ($tag['username'] ?? '') : '';
+                    $tagJoined = is_array($tag) ? !empty($tag['joined']) : true;
+                    ?>
+                    <button type="button" class="q-tag js-home-quick-tag"
+                        data-tag-type="<?php echo htmlspecialchars($tagType); ?>"
+                        data-tag-query="<?php echo htmlspecialchars($tagQuery); ?>"
+                        data-tag-slug="<?php echo htmlspecialchars($tagSlug); ?>"
+                        data-tag-username="<?php echo htmlspecialchars($tagUsername); ?>"
+                        data-tag-joined="<?php echo $tagJoined ? '1' : '0'; ?>"><?php echo htmlspecialchars($tagLabel); ?></button>
                 <?php endforeach; ?>
             </div>
         </div>
@@ -108,21 +122,33 @@
         <div class="ann-header">
             <h2>Workspace Announcements</h2>
         </div>
-        <div class="ann-grid">
-            <?php foreach ($home_announcements as $ann): ?>
-                <div class="ann-card">
-                    <div class="ann-card-top">
-                        <span class="ann-card-icon" aria-hidden="true"><?php echo $ann['icon']; ?></span>
-                        <span class="tag <?php echo htmlspecialchars($ann['tag_class']); ?>"><?php echo htmlspecialchars($ann['tag']); ?></span>
-                    </div>
-                    <h3><?php echo htmlspecialchars($ann['title']); ?></h3>
-                    <p><?php echo htmlspecialchars($ann['body']); ?></p>
-                    <div class="ann-footer">
-                        <span class="ann-date"><?php echo htmlspecialchars($ann['date']); ?></span>
-                        <a href="javascript:void(0)" class="details-btn" onclick="toggleSecurityModal()">Details</a>
-                    </div>
+        <div class="ann-grid" id="homeAnnouncementsGrid">
+            <?php if (empty($home_announcements)): ?>
+                <div class="ann-card ann-card--empty">
+                    <p>No active announcements right now.</p>
                 </div>
-            <?php endforeach; ?>
+            <?php else: ?>
+                <?php foreach ($home_announcements as $ann): ?>
+                    <div class="ann-card" data-announcement-id="<?php echo (int)$ann['id']; ?>">
+                        <div class="ann-card-top">
+                            <span class="ann-card-icon" aria-hidden="true"><?php echo $ann['icon']; ?></span>
+                            <span class="tag <?php echo htmlspecialchars($ann['tag_class']); ?>"><?php echo htmlspecialchars($ann['tag']); ?></span>
+                        </div>
+                        <h3><?php echo htmlspecialchars($ann['title']); ?></h3>
+                        <p><?php echo htmlspecialchars($ann['body']); ?></p>
+                        <div class="ann-footer">
+                            <span class="ann-date"><?php echo htmlspecialchars($ann['date']); ?></span>
+                            <button type="button" class="details-btn js-ann-details"
+                                data-title="<?php echo htmlspecialchars($ann['title']); ?>"
+                                data-body="<?php echo htmlspecialchars($ann['body']); ?>"
+                                data-tag="<?php echo htmlspecialchars($ann['tag']); ?>"
+                                data-tag-class="<?php echo htmlspecialchars($ann['tag_class']); ?>"
+                                data-posted-by="<?php echo htmlspecialchars($ann['posted_by'] ?? 'Workspace Admin'); ?>"
+                                data-posted-at="<?php echo htmlspecialchars($ann['posted_at'] ?? $ann['date']); ?>">Details</button>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </div>
     </div>
 

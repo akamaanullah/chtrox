@@ -252,6 +252,7 @@ CREATE TABLE channels (
     id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     workspace_id    BIGINT UNSIGNED NOT NULL,
     slug            VARCHAR(80)     NOT NULL,
+    former_slugs    TEXT            NULL,
     name            VARCHAR(100)    NOT NULL,
     description     TEXT            NULL,
     visibility      ENUM('public','private') NOT NULL DEFAULT 'public',
@@ -290,6 +291,30 @@ CREATE TABLE channel_members (
         FOREIGN KEY (channel_id) REFERENCES channels (id)
         ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_channel_members_member
+        FOREIGN KEY (workspace_member_id) REFERENCES workspace_members (id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE channel_join_requests (
+    id                      BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    workspace_id            BIGINT UNSIGNED NOT NULL,
+    channel_id              BIGINT UNSIGNED NOT NULL,
+    workspace_member_id     BIGINT UNSIGNED NOT NULL,
+    status                  ENUM('pending','accepted','rejected') NOT NULL DEFAULT 'pending',
+    created_at              TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_channel_join_requests (channel_id, workspace_member_id),
+    KEY idx_channel_join_requests_workspace (workspace_id),
+    KEY idx_channel_join_requests_channel (channel_id),
+    KEY idx_channel_join_requests_member (workspace_member_id),
+    CONSTRAINT fk_channel_join_requests_workspace
+        FOREIGN KEY (workspace_id) REFERENCES workspaces (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_channel_join_requests_channel
+        FOREIGN KEY (channel_id) REFERENCES channels (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_channel_join_requests_member
         FOREIGN KEY (workspace_member_id) REFERENCES workspace_members (id)
         ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -413,7 +438,7 @@ CREATE TABLE message_pins (
     pinned_by           BIGINT UNSIGNED NOT NULL,
     pinned_at           TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uq_message_pins (conversation_id, message_id),
+    UNIQUE KEY uq_message_pins (pinned_by, message_id),
     KEY idx_message_pins_conversation (conversation_id, pinned_at DESC),
     CONSTRAINT fk_message_pins_conversation
         FOREIGN KEY (conversation_id) REFERENCES conversations (id)

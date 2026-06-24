@@ -1,8 +1,20 @@
 <?php
 
 use App\Core\View;
+use App\Helpers\MessageDateDivider;
+
+$contact_profile = $contact_profile ?? [
+    'handle' => '@user',
+    'bio' => 'No bio added yet.',
+    'is_online' => false,
+    'presence_label' => 'Offline',
+];
+$conversation_media = $conversation_media ?? [];
+$conversation_files = $conversation_files ?? [];
+$has_older_messages = !empty($has_older_messages);
+$oldest_message_id = (int)($oldest_message_id ?? 0);
 ?>
-<div class="dm-chat-screen" data-conversation-id="<?php echo $conversation_id; ?>" data-with-username="<?php echo htmlspecialchars($with_id); ?>" data-with-member-id="<?php echo $with_user['id']; ?>">
+<div class="dm-chat-screen" data-conversation-id="<?php echo $conversation_id; ?>" data-with-username="<?php echo htmlspecialchars($with_id); ?>" data-with-member-id="<?php echo $with_user['id']; ?>" data-has-older="<?php echo $has_older_messages ? '1' : '0'; ?>" data-oldest-message-id="<?php echo $oldest_message_id; ?>">
     <div class="dm-chat-header">
         <a href="dms" class="dm-chat-back" title="Back to DMs">
             <i data-lucide="arrow-left" size="20"></i>
@@ -10,11 +22,11 @@ use App\Core\View;
         <div class="dm-chat-header-user">
             <div class="dm-chat-header-avatar">
                 <img src="<?php echo htmlspecialchars($with_user['avatar']); ?>" alt="">
-                <span class="dm-chat-header-status"></span>
+                <span class="dm-chat-header-status<?php echo empty($contact_profile['is_online']) ? ' dm-chat-header-status--offline' : ''; ?>"></span>
             </div>
             <div class="dm-chat-header-info">
                 <h2 class="dm-chat-header-name"><?php echo $name; ?></h2>
-                <span class="dm-chat-header-meta">Active now</span>
+                <span class="dm-chat-header-meta"><?php echo htmlspecialchars($contact_profile['presence_label']); ?></span>
             </div>
         </div>
         <div class="dm-chat-header-actions">
@@ -39,22 +51,30 @@ use App\Core\View;
     </div>
 
     <div class="dm-chat-messages" id="dmChatMessages">
+        <div class="dm-load-more-wrap dm-load-more-wrap--hidden" id="dmLoadNewerWrap" style="margin-bottom: 8px;">
+            <button type="button" class="dm-load-more js-dm-load-newer" id="dmLoadNewer">Load newer messages</button>
+        </div>
         <?php foreach ($messages as $i => $m): ?>
-            <div class="dm-chat-msg dm-chat-msg--<?php echo $m['side']; ?> <?php echo $i >= $initial_visible ? 'dm-chat-msg--hidden' : ''; ?>"
-                id="dm-msg-<?php echo $m['id']; ?>" data-msg-index="<?php echo $m['id']; ?>" <?php echo $i >= $initial_visible ? ' data-initially-hidden="1"' : ''; ?>>
+            <div class="dm-chat-msg dm-chat-msg--<?php echo $m['side']; ?> <?php echo $i >= $initial_visible ? 'dm-chat-msg--hidden' : ''; ?><?php echo !empty($m['deleted_for_everyone']) ? ' dm-chat-msg--deleted-everyone' : ''; ?><?php echo !empty($m['is_pinned']) ? ' dm-chat-msg--pinned' : ''; ?>"
+                id="dm-msg-<?php echo $m['id']; ?>" data-msg-index="<?php echo $m['id']; ?>" data-created-at="<?php echo htmlspecialchars($m['created_at'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" <?php echo $i >= $initial_visible ? ' data-initially-hidden="1"' : ''; ?><?php echo !empty($m['deleted_for_everyone']) ? ' data-deleted-everyone="1"' : ''; ?><?php echo !empty($m['is_pinned']) ? ' data-pinned="1"' : ''; ?>>
                 <div class="dm-msg-body">
-                    <?php if ($m['side'] === 'them'): ?>
+                    <?php if ($m['side'] === 'them' && empty($m['deleted_for_everyone'])): ?>
                         <span class="dm-msg-sender"><?php echo $name; ?></span>
                     <?php endif; ?>
+                    <?php if (!empty($m['deleted_for_everyone'])): ?>
+                        <?php View::render('partials/chat/deleted-message-bubble.php'); ?>
+                    <?php else: ?>
                     <?php
                     $attachments = $m['attachments'] ?? [];
                     $has_attachments = !empty($attachments);
                     $images = array_filter($attachments, function($a) { return $a['category'] === 'image'; });
-                    $docs = array_filter($attachments, function($a) { return $a['category'] !== 'image'; });
+                    $docs = array_filter($attachments, function($a) { return !in_array($a['category'], ['image', 'audio'], true); });
+                    $audioFiles = array_filter($attachments, function($a) { return $a['category'] === 'audio'; });
                     $images = array_values($images);
                     $docs = array_values($docs);
+                    $audioFiles = array_values($audioFiles);
                     ?>
-                    <div class="dm-msg-bubble<?php echo ($has_attachments || $m['message_type'] === 'gif') ? ' dm-msg-bubble--media' : ''; ?>">
+                    <div class="dm-msg-bubble<?php echo ($has_attachments || $m['message_type'] === 'gif' || $m['message_type'] === 'voice') ? ' dm-msg-bubble--media' : ''; ?>">
                         <?php if (!empty($m['is_forwarded'])): ?>
                             <?php View::render('partials/chat/forward-label.php'); ?>
                         <?php endif; ?>
@@ -68,6 +88,20 @@ use App\Core\View;
                             <div class="dm-msg-images dm-msg-images--single">
                                 <img src="<?php echo htmlspecialchars($m['text']); ?>" alt="" class="dm-msg-img js-msg-img" loading="lazy">
                             </div>
+                        <?php elseif ($m['message_type'] === 'voice'): ?>
+                            <?php
+                            $voiceAudio = null;
+                            foreach ($attachments as $att) {
+                                if (($att['category'] ?? '') !== 'image') {
+                                    $voiceAudio = $att;
+                                    break;
+                                }
+                            }
+                            if ($voiceAudio):
+                                $voiceAudio['duration_seconds'] = (int)($m['voice_duration_seconds'] ?? 0);
+                                View::render('partials/chat/voice-player.php', ['audio' => $voiceAudio]);
+                            endif;
+                            ?>
                         <?php elseif ($m['text']): ?>
                             <p><?php echo $m['text']; ?></p>
                         <?php endif; ?>
@@ -100,18 +134,20 @@ use App\Core\View;
                             <?php endif; ?>
                         <?php endif; ?>
 
-                        <?php if (!empty($docs)): ?>
+                        <?php if (!empty($docs) && ($m['message_type'] ?? '') !== 'voice'): ?>
                             <div class="dm-msg-files">
                                 <?php foreach ($docs as $d): ?>
                                     <?php View::render('partials/chat/file-card.php', [
-                                        'file_name' => $d['original_name'], 
-                                        'file_size' => number_format($d['size_bytes'] / 1024, 2) . ' KB',
-                                        'file_url' => $d['url']
+                                        'file_name' => $d['original_name'],
+                                        'file_size' => \App\Helpers\FileUploadPolicy::formatSize((int)$d['size_bytes']),
+                                        'file_url' => $d['url'],
+                                        'mime_type' => $d['mime_type'] ?? '',
                                     ]); ?>
                                 <?php endforeach; ?>
                             </div>
                         <?php endif; ?>
                     </div>
+                    <?php endif; ?>
                     <div class="dm-msg-reactions">
                         <?php if (!empty($m['reactions'])): ?>
                             <?php foreach ($m['reactions'] as $r): ?>
@@ -153,12 +189,34 @@ use App\Core\View;
                         aria-label="Delete"><i data-lucide="trash-2" size="16"></i></button>
                 </div>
             </div>
+            <?php MessageDateDivider::maybeRenderAfter($messages, $i); ?>
         <?php endforeach; ?>
-        <?php if (count($messages) > $initial_visible): ?>
+        <?php if (count($messages) > $initial_visible || $has_older_messages): ?>
         <div class="dm-load-more-wrap" id="dmLoadMoreWrap">
-            <button type="button" class="dm-load-more js-dm-load-more" id="dmLoadMore">Read more</button>
+            <button type="button" class="dm-load-more js-dm-load-more" id="dmLoadMore">Load older messages</button>
         </div>
         <?php endif; ?>
+        <div class="dm-chat-search-empty-state" id="dmChatSearchEmptyState" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; text-align: center; color: #94a3b8; flex-shrink: 0; margin: auto;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 12px; color: #94a3b8; opacity: 0.7;">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.3-4.3"></path>
+                <path d="m15 9-6 6"></path>
+                <path d="m9 9 6 6"></path>
+            </svg>
+            <div style="font-weight: 600; font-size: 15px; color: #64748b;">No matches in visible messages</div>
+            <div style="font-size: 13px; margin-top: 6px; max-width: 280px; line-height: 1.4;">Use the dropdown below the search input to check the complete conversation history.</div>
+        </div>
+    </div>
+
+    <div class="dm-voice-permission-notice" id="dmVoicePermissionNotice" hidden>
+        <div class="dm-voice-permission-notice__text">
+            <strong>Microphone access needed</strong>
+            <p id="dmVoicePermissionMessage">Allow microphone access to record voice notes.</p>
+        </div>
+        <button type="button" class="dm-voice-permission-retry js-voice-permission-retry">Allow microphone</button>
+        <button type="button" class="dm-voice-permission-dismiss js-voice-permission-dismiss" aria-label="Dismiss">
+            <i data-lucide="x" size="16"></i>
+        </button>
     </div>
 
     <!-- Quick reaction picker (WhatsApp style: Heart, Thumb, Emoji) -->
@@ -170,6 +228,19 @@ use App\Core\View;
         <button type="button" class="dm-reaction-option" data-emoji="😮" title="Wow" aria-label="Wow">😮</button>
         <button type="button" class="dm-reaction-option" data-emoji="😢" title="Sad" aria-label="Sad">😢</button>
         <button type="button" class="dm-reaction-option" data-emoji="🙏" title="Thanks" aria-label="Thanks">🙏</button>
+    </div>
+
+    <div class="reaction-overlay" id="dmReactionOverlay" hidden></div>
+    <div class="reaction-modal" id="dmReactionModal" role="dialog" aria-labelledby="dmReactionModalTitle" aria-modal="true" hidden>
+        <div class="reaction-modal-inner">
+            <div class="reaction-modal-header">
+                <div class="reaction-modal-title" id="dmReactionModalTitle">Reactions</div>
+                <button type="button" class="reaction-modal-close js-dm-reaction-close" aria-label="Close">
+                    <i data-lucide="x" size="20"></i>
+                </button>
+            </div>
+            <div class="reaction-modal-body" id="dmReactionModalBody"></div>
+        </div>
     </div>
 
     <!-- Forward message modal – search, people, groups, scroll, select count -->
@@ -259,8 +330,8 @@ use App\Core\View;
                 </div>
                 <button type="button" class="dm-chat-tool-btn dm-chat-tool-btn--media" data-action="attach"
                     title="Attach file" aria-label="Attach file"><i data-lucide="paperclip" size="18"></i></button>
-                <button type="button" class="dm-chat-tool-btn dm-chat-tool-btn--media" data-action="voice"
-                    title="Voice note" aria-label="Voice note"><i data-lucide="mic" size="18"></i></button>
+                <button type="button" class="dm-chat-tool-btn dm-chat-tool-btn--media js-voice-toggle" data-action="voice"
+                    title="Voice note" aria-label="Voice note" aria-pressed="false"><i data-lucide="mic" size="18"></i></button>
             </div>
         </div>
         <form class="dm-chat-form" id="dmChatForm" action="#" method="post">
@@ -279,7 +350,15 @@ use App\Core\View;
             </div>
             <div class="dm-chat-input-area" id="dmChatInput" contenteditable="true" role="textbox" aria-multiline="true"
                 aria-label="Type a message" data-placeholder="Type a message..."></div>
-            <button type="submit" class="dm-chat-send" title="Send">
+            <div class="dm-voice-recorder" id="dmVoiceRecorder" hidden>
+                <button type="button" class="dm-voice-recording-cancel js-voice-recording-cancel" aria-label="Cancel recording">
+                    <i data-lucide="trash-2" size="18"></i>
+                </button>
+                <span class="dm-voice-recording-dot" aria-hidden="true"></span>
+                <span class="dm-voice-recording-time" id="dmVoiceRecordingTime">0:00</span>
+                <canvas class="dm-voice-waveform" id="dmVoiceWaveform" aria-hidden="true"></canvas>
+            </div>
+            <button type="submit" class="dm-chat-send" id="dmChatSend" title="Send">
                 <i data-lucide="send" size="18"></i>
             </button>
         </form>
@@ -347,46 +426,46 @@ use App\Core\View;
                         <div class="dm-details-avatar-wrap">
                             <img src="<?php echo htmlspecialchars($with_user['avatar']); ?>" alt=""
                                 class="dm-details-avatar">
-                            <span class="dm-details-status"></span>
+                            <span class="dm-details-status<?php echo empty($contact_profile['is_online']) ? ' dm-details-status--offline' : ''; ?>"></span>
                         </div>
                         <h3 class="dm-details-name"><?php echo $name; ?></h3>
-                        <span
-                            class="dm-details-handle">@<?php echo strtoupper(str_replace(' ', '_', $with_user['name'])); ?></span>
+                        <span class="dm-details-handle"><?php echo htmlspecialchars($contact_profile['handle']); ?></span>
                         <div class="dm-details-bio-wrap">
                             <span class="dm-details-bio-label">PROFESSIONAL BIO</span>
-                            <p class="dm-details-bio">Project Manager | Bringing order to chaos.</p>
+                            <p class="dm-details-bio"><?php echo htmlspecialchars($contact_profile['bio']); ?></p>
                         </div>
+                        <p class="dm-details-presence"><?php echo htmlspecialchars($contact_profile['presence_label']); ?></p>
                     </div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentMedia" role="tabpanel"
                     hidden>
                     <div class="dm-details-media-grid" id="dmDetailsMediaGrid">
-                        <?php foreach ($common_media as $ms): ?>
-                            <img src="<?php echo htmlspecialchars($ms); ?>" alt="" class="dm-details-media-thumb"
-                                loading="lazy">
+                        <?php foreach ($conversation_media as $item): ?>
+                            <button type="button" class="dm-details-media-thumb-btn js-details-media-jump"
+                                data-message-id="<?php echo (int)$item['message_id']; ?>"
+                                aria-label="<?php echo htmlspecialchars($item['label']); ?>">
+                                <img src="<?php echo htmlspecialchars($item['url']); ?>" alt="<?php echo htmlspecialchars($item['label']); ?>"
+                                    class="dm-details-media-thumb" loading="lazy">
+                            </button>
                         <?php endforeach; ?>
                     </div>
+                    <div class="dm-details-empty" id="dmDetailsMediaEmpty"<?php echo !empty($conversation_media) ? ' hidden' : ''; ?>>No media shared yet</div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentFiles" role="tabpanel"
                     hidden>
-                    <div class="dm-details-files-list">
-                        <a href="#" class="dm-details-file-row" download>
-                            <span class="dm-details-file-icon"><i data-lucide="file-text" size="18"></i></span>
-                            <div class="dm-details-file-info">
-                                <span class="dm-details-file-name">Project_Roadmap_2024.pdf</span>
-                                <span class="dm-details-file-size">2.4 MB</span>
-                            </div>
-                            <i data-lucide="download" size="18" class="dm-details-file-dl"></i>
-                        </a>
-                        <a href="#" class="dm-details-file-row" download>
-                            <span class="dm-details-file-icon"><i data-lucide="file-text" size="18"></i></span>
-                            <div class="dm-details-file-info">
-                                <span class="dm-details-file-name">password_configs.txt</span>
-                                <span class="dm-details-file-size">0.05 MB</span>
-                            </div>
-                            <i data-lucide="download" size="18" class="dm-details-file-dl"></i>
-                        </a>
+                    <div class="dm-details-files-list" id="dmDetailsFilesList">
+                        <?php foreach ($conversation_files as $file): ?>
+                            <a href="<?php echo htmlspecialchars($file['url']); ?>" class="dm-details-file-row" download>
+                                <span class="dm-details-file-icon"><i data-lucide="file-text" size="18"></i></span>
+                                <div class="dm-details-file-info">
+                                    <span class="dm-details-file-name"><?php echo htmlspecialchars($file['name']); ?></span>
+                                    <span class="dm-details-file-size"><?php echo htmlspecialchars($file['size_label']); ?></span>
+                                </div>
+                                <i data-lucide="download" size="18" class="dm-details-file-dl"></i>
+                            </a>
+                        <?php endforeach; ?>
                     </div>
+                    <div class="dm-details-empty" id="dmDetailsFilesEmpty"<?php echo !empty($conversation_files) ? ' hidden' : ''; ?>>No files shared yet</div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentPinned" role="tabpanel"
                     hidden>

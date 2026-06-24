@@ -80,7 +80,9 @@ class ErrorHandler
 
         // Try code-specific template first, then fallback to generic
         $codeTemplate = VIEW_DIR . '/errors/' . $code . '.php';
-        $fallbackTemplate = VIEW_DIR . '/errors/404.php';
+        $fallbackTemplate = ($code >= 500 || $code === 0)
+            ? VIEW_DIR . '/errors/500.php'
+            : VIEW_DIR . '/errors/404.php';
 
         $error_message = $message;
         $not_found_path = $message;

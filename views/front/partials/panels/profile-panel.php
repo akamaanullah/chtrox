@@ -1,3 +1,7 @@
+<?php
+$currentUser = $currentUser ?? [];
+$joinedChannels = $joinedChannels ?? [];
+?>
 <!-- Profile Panel - Right side slide-over -->
 <div class="profile-panel-overlay" id="profilePanelOverlay"></div>
 <div class="profile-panel" id="profilePanel">
@@ -10,7 +14,19 @@
     <div class="profile-panel-body">
         <div class="profile-panel-avatar-wrap">
             <div class="profile-panel-avatar">
-                <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
+                <?php
+                $avatarPath = $currentUser['avatar_path'] ?? null;
+                if ($avatarPath) {
+                    if (strpos($avatarPath, 'http://') !== 0 && strpos($avatarPath, 'https://') !== 0) {
+                        $avatarUrl = \App\Core\View::asset($avatarPath);
+                    } else {
+                        $avatarUrl = $avatarPath;
+                    }
+                } else {
+                    $avatarUrl = DEFAULT_AVATAR_URL;
+                }
+                ?>
+                <img src="<?php echo htmlspecialchars($avatarUrl); ?>"
                     alt="Profile" id="profilePanelAvatarImg">
             </div>
             <span class="profile-panel-avatar-overlay"></span>
@@ -21,8 +37,8 @@
         </div>
         <div class="profile-panel-identity">
             <div class="profile-panel-identity-view" id="profileIdentityView">
-                <span class="profile-panel-name-text" id="profileNameText">James Wilson</span>
-                <span class="profile-panel-email-text" id="profileEmailText">james.wilson@chatrox.com</span>
+                <span class="profile-panel-name-text" id="profileNameText"><?php echo htmlspecialchars(($currentUser['first_name'] ?? '') . ' ' . ($currentUser['last_name'] ?? '')); ?></span>
+                <span class="profile-panel-email-text" id="profileEmailText"><?php echo htmlspecialchars($currentUser['email'] ?? ''); ?></span>
                 <button type="button" class="profile-panel-identity-edit-btn js-profile-edit-identity"
                     title="Edit name and email">
                     <i data-lucide="pencil" size="12"></i>
@@ -30,9 +46,9 @@
             </div>
             <div class="profile-panel-identity-edit profile-panel-identity-edit--hidden" id="profileIdentityEdit">
                 <input type="text" class="profile-panel-name" id="profileUsername" placeholder="Your name"
-                    value="James Wilson">
+                    value="<?php echo htmlspecialchars(($currentUser['first_name'] ?? '') . ' ' . ($currentUser['last_name'] ?? '')); ?>">
                 <input type="email" class="profile-panel-email" id="profileEmail" placeholder="email@example.com"
-                    value="james.wilson@chatrox.com">
+                    value="<?php echo htmlspecialchars($currentUser['email'] ?? ''); ?>" readonly disabled>
                 <button type="button" class="profile-panel-identity-done-btn js-profile-done-identity" title="Done">
                     <i data-lucide="check" size="12"></i>
                 </button>
@@ -41,7 +57,7 @@
         <div class="profile-panel-field">
             <label class="profile-panel-label">Professional Bio</label>
             <textarea class="profile-panel-textarea" id="profileBio" rows="3"
-                placeholder="Tell others about yourself...">Product lead at Chatrox. Love building tools that teams actually use.</textarea>
+                placeholder="Tell others about yourself..."><?php echo htmlspecialchars($currentUser['bio'] ?? ''); ?></textarea>
         </div>
         <div class="profile-panel-field profile-panel-field--theme theme-collapsed" id="profileThemeField">
             <div class="profile-panel-theme-header js-theme-color-toggle" role="button" tabindex="0"
@@ -115,6 +131,7 @@
         <div class="profile-panel-field profile-panel-field--channels">
             <div class="profile-panel-channels-header">
                 <label class="profile-panel-label">Joined Channels</label>
+                <span class="profile-panel-channels-count" id="profileChannelsActiveBadge" style="font-size: 11px; font-weight: 600; color: #0f766e; background: #f0fdf4; padding: 2px 8px; border-radius: 9999px; margin-left: 8px;"><?php echo count($joinedChannels); ?> active</span>
             </div>
             <div class="profile-panel-channels-search">
                 <i data-lucide="search" size="16"></i>
@@ -123,43 +140,21 @@
                     aria-label="Search joined channels">
             </div>
             <div class="profile-panel-channels-list" id="profileChannelsList">
-                <div class="profile-channel-row" data-channel-name="general">
+                <?php foreach ($joinedChannels as $ch): ?>
+                <div class="profile-channel-row" data-channel-name="<?php echo htmlspecialchars(strtolower($ch['name'])); ?>">
                     <div class="profile-channel-icon"><span>#</span></div>
                     <div class="profile-channel-info">
-                        <span class="profile-channel-name">#general</span>
-                        <span class="profile-channel-members">3 members</span>
+                        <span class="profile-channel-name">#<?php echo htmlspecialchars($ch['name']); ?></span>
+                        <span class="profile-channel-members"><?php echo htmlspecialchars($ch['member_count']); ?> members</span>
                     </div>
                     <button type="button" class="profile-channel-leave js-leave-channel" title="Leave channel"
-                        data-channel="general" aria-label="Leave #general">Leave</button>
+                        data-channel-id="<?php echo (int)$ch['id']; ?>"
+                        data-channel="<?php echo htmlspecialchars($ch['name']); ?>" aria-label="Leave #<?php echo htmlspecialchars($ch['name']); ?>">Leave</button>
                 </div>
-                <div class="profile-channel-row" data-channel-name="development-announcements">
-                    <div class="profile-channel-icon"><span>#</span></div>
-                    <div class="profile-channel-info">
-                        <span class="profile-channel-name">#development-announcements</span>
-                        <span class="profile-channel-members">2 members</span>
-                    </div>
-                    <button type="button" class="profile-channel-leave js-leave-channel" title="Leave channel"
-                        data-channel="development-announcements"
-                        aria-label="Leave #development-announcements">Leave</button>
-                </div>
-                <div class="profile-channel-row" data-channel-name="design-huddle">
-                    <div class="profile-channel-icon"><span>#</span></div>
-                    <div class="profile-channel-info">
-                        <span class="profile-channel-name">#design-huddle</span>
-                        <span class="profile-channel-members">5 members</span>
-                    </div>
-                    <button type="button" class="profile-channel-leave js-leave-channel" title="Leave channel"
-                        data-channel="design-huddle" aria-label="Leave #design-huddle">Leave</button>
-                </div>
-                <div class="profile-channel-row" data-channel-name="security-alerts">
-                    <div class="profile-channel-icon"><span>#</span></div>
-                    <div class="profile-channel-info">
-                        <span class="profile-channel-name">#security-alerts</span>
-                        <span class="profile-channel-members">4 members</span>
-                    </div>
-                    <button type="button" class="profile-channel-leave js-leave-channel" title="Leave channel"
-                        data-channel="security-alerts" aria-label="Leave #security-alerts">Leave</button>
-                </div>
+                <?php endforeach; ?>
+                <?php if (empty($joinedChannels)): ?>
+                <div style="padding: 20px; text-align: center; color: var(--text-secondary, #475569); font-size: 13px;">No joined channels</div>
+                <?php endif; ?>
             </div>
         </div>
         <div class="profile-panel-actions">

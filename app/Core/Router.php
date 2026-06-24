@@ -34,7 +34,7 @@ class Router
 
     protected function addRoute(string $method, string $route, string $controllerAction, array $middlewares = []): void
     {
-        $routeRegex = preg_replace('/\{([a-zA-Z0-9_]+)\}/', '(?P<\1>[a-zA-Z0-9_\-\.]+)', $route);
+        $routeRegex = preg_replace('/\{([a-zA-Z0-9_]+)\}/', '(?P<\1>[a-zA-Z0-9_\-\.\@\+\%]+)', $route);
         $routeRegex = '#^' . $routeRegex . '$#';
 
         $this->routes[$method][] = [

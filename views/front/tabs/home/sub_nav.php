@@ -20,28 +20,28 @@ $progressLabel = $home_chat_card['progress_label'] ?? 'Inbox clear';
 
     <div class="search-box">
         <i data-lucide="search" size="18"></i>
-        <input type="text" placeholder="Search home...">
+        <input type="text" id="homeSubNavSearch" placeholder="Search home..." autocomplete="off" aria-label="Search home sidebar">
     </div>
 
-    <div class="sub-nav-content">
-        <div class="priority-card">
-            <div class="card-tag"><?php echo htmlspecialchars($home_chat_card['badge']); ?></div>
+    <div class="sub-nav-content" id="homeSubNavContent">
+        <div class="priority-card" id="homeInboxCard" data-home-group="inbox">
+            <div class="card-tag" id="homeInboxBadge"><?php echo htmlspecialchars($home_chat_card['badge']); ?></div>
             <span class="label"><?php echo htmlspecialchars($home_chat_card['label']); ?></span>
-            <h3><?php echo htmlspecialchars($home_chat_card['title']); ?></h3>
+            <h3 id="homeInboxTitle"><?php echo htmlspecialchars($home_chat_card['title']); ?></h3>
             <div class="progress-container">
-                <span class="progress-text"><?php echo htmlspecialchars($progressLabel); ?> <?php echo $progress; ?>%</span>
+                <span class="progress-text" id="homeInboxProgressText"><?php echo htmlspecialchars($progressLabel); ?> <?php echo $progress; ?>%</span>
                 <div class="progress-bar">
-                    <div class="progress-fill" style="width: <?php echo $progress; ?>%;"></div>
+                    <div class="progress-fill" id="homeInboxProgressFill" style="width: <?php echo $progress; ?>%;"></div>
                 </div>
             </div>
         </div>
 
-        <div class="sub-nav-group">
+        <div class="sub-nav-group" data-home-group="dms">
             <div class="group-header">
                 <h4 class="section-label">DIRECT MESSAGES</h4>
                 <a href="dms" class="view-all">VIEW ALL</a>
             </div>
-            <div class="mini-list">
+            <div class="mini-list" id="homeSidebarDms">
                 <?php if (empty($home_sidebar_dms)): ?>
                     <div class="mini-item no-hover">
                         <div class="mini-info">
@@ -69,12 +69,12 @@ $progressLabel = $home_chat_card['progress_label'] ?? 'Inbox clear';
             </div>
         </div>
 
-        <div class="sub-nav-group">
+        <div class="sub-nav-group" data-home-group="channels">
             <div class="group-header">
                 <h4 class="section-label">CHANNELS</h4>
                 <a href="browse-channels" class="view-all">EXPLORE</a>
             </div>
-            <div class="mini-list">
+            <div class="mini-list" id="homeSidebarChannels">
                 <?php if (empty($home_sidebar_channels)): ?>
                     <div class="mini-item no-hover">
                         <div class="mini-info">
@@ -96,11 +96,11 @@ $progressLabel = $home_chat_card['progress_label'] ?? 'Inbox clear';
             </div>
         </div>
 
-        <div class="sub-nav-group">
+        <div class="sub-nav-group" data-home-group="activity">
             <div class="group-header">
                 <h4 class="section-label">RECENT ACTIVITY</h4>
             </div>
-            <div class="mini-list">
+            <div class="mini-list" id="homeSidebarActivity">
                 <?php if (empty($home_sidebar_activity)): ?>
                     <div class="mini-item no-hover">
                         <div class="mini-info">

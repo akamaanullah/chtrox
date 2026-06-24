@@ -68,10 +68,23 @@ use App\Core\View;
     </nav>
 
     <div class="sidebar-bottom">
+        <?php
+        $currentUser = \App\Core\Session::user();
+        $avatarPath = $currentUser['avatar_path'] ?? null;
+        if ($avatarPath) {
+            if (strpos($avatarPath, 'http://') !== 0 && strpos($avatarPath, 'https://') !== 0) {
+                $avatarUrl = \App\Core\View::asset($avatarPath);
+            } else {
+                $avatarUrl = $avatarPath;
+            }
+        } else {
+            $avatarUrl = DEFAULT_AVATAR_URL;
+        }
+        ?>
         <a href="#" class="nav-item js-open-profile-panel" id="sidebarAccountBtn">
             <div class="account-box">
-                <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
-                    alt="Account">
+                <img src="<?php echo htmlspecialchars($avatarUrl); ?>"
+                    alt="Account" class="sidebar-user-avatar">
                 <div class="status-dot"></div>
             </div>
             <span class="nav-text">Account</span>

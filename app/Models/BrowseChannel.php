@@ -24,10 +24,15 @@ class BrowseChannel extends Model
                 EXISTS (
                     SELECT 1 FROM channel_members cm 
                     WHERE cm.channel_id = c.id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
-                ) as joined
+                ) as joined,
+                COALESCE((
+                    SELECT status FROM channel_join_requests r
+                    WHERE r.channel_id = c.id AND r.workspace_member_id = :member_id
+                    LIMIT 1
+                ), 'none') as request_status
             FROM channels c
-            WHERE c.workspace_id = :workspace_id AND c.visibility = 'public' AND c.status = 'active'
-            ORDER BY c.name ASC
+            WHERE c.workspace_id = :workspace_id AND c.status = 'active'
+            ORDER BY (c.visibility = 'public') DESC, c.name ASC
         ");
         $stmt->execute([
             'workspace_id' => $workspaceId,
@@ -47,13 +52,18 @@ class BrowseChannel extends Model
         ];
 
         foreach ($rows as $row) {
+            $metaPrefix = $row['visibility'] === 'private' ? 'Private · ' : '';
+            $description = $row['description'] ?: 'No description provided';
+
             $channels[] = [
                 'id' => $row['id'],
                 'slug' => $row['slug'],
                 'icon' => $iconMap[$row['slug']] ?? 'hash',
                 'name' => '#' . $row['name'],
-                'meta' => ($row['description'] ?: 'No description provided') . ' · ' . $row['member_count'] . ' members',
-                'joined' => (bool) $row['joined']
+                'meta' => $metaPrefix . $description . ' · ' . $row['member_count'] . ' members',
+                'visibility' => $row['visibility'],
+                'joined' => (bool) $row['joined'],
+                'request_pending' => $row['request_status'] === 'pending'
             ];
         }
 

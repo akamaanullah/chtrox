@@ -62,6 +62,14 @@ class View
         }
     }
 
+    public static function capture(string $path, array $data = []): string
+    {
+        ob_start();
+        self::render($path, $data);
+
+        return (string) ob_get_clean();
+    }
+
     public static function renderAdmin(string $path, array $data = []): void
     {
         extract($data, EXTR_SKIP);

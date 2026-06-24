@@ -3,8 +3,11 @@
 namespace App\Controllers\Front\Api;
 
 use App\Core\Controller;
+use App\Helpers\GiphyUrl;
+use App\Helpers\MessageEnricher;
 use App\Core\Session;
 use App\Core\Model;
+use App\Helpers\FileAccess;
 use App\Models\ForwardTarget;
 use PDO;
 
@@ -20,7 +23,7 @@ class MessageController extends Controller
             $this->jsonResponse(['error' => 'Unauthorized'], 401);
         }
 
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $input = $this->getRequestInput();
         $conversationId = $input['conversation_id'] ?? 0;
         $body = trim($input['body'] ?? '');
         $replyToId = !empty($input['reply_to_id']) ? (int)$input['reply_to_id'] : null;
@@ -67,13 +70,33 @@ class MessageController extends Controller
 
         // Determine message type
         $msgType = 'text';
-        if (!empty($fileIds)) {
-            $msgType = 'file';
+        $clientType = strtolower(trim((string)($input['message_type'] ?? '')));
+        if ($clientType === 'voice' && !empty($fileIds)) {
+            $msgType = 'voice';
+            $voiceDuration = max(0, (int)($input['voice_duration_seconds'] ?? 0));
+            $body = $voiceDuration > 0 ? (string)$voiceDuration : '';
+        } elseif ($clientType === 'gif') {
+            if (!GiphyUrl::isGifUrl($body)) {
+                $this->jsonResponse(['error' => 'invalid_gif_url', 'message' => 'Invalid GIF URL'], 400);
+            }
+            $msgType = 'gif';
+        } elseif (!empty($fileIds)) {
+            $msgType = self::resolveAttachmentMessageType($db, $fileIds, $workspaceId);
         }
-        // If body looks like an absolute Giphy link, we could classify as 'gif'
-        if (preg_is_gif_url($body)) {
+        if ($msgType === 'text' && GiphyUrl::isGifUrl($body)) {
             $msgType = 'gif';
         }
+
+        if (!empty($fileIds) && is_array($fileIds)) {
+            $fileError = FileAccess::validateFileIdsForSend($db, $fileIds, $workspaceId, $memberId);
+            if ($fileError !== null) {
+                $this->jsonResponse(['error' => 'invalid_files', 'message' => $fileError], 403);
+            }
+        }
+
+        $mentionedIds = [];
+        $channelName = null;
+        $channelSlug = null;
 
         $db->beginTransaction();
         try {
@@ -113,6 +136,9 @@ class MessageController extends Controller
             ");
             $stmtCursor->execute([$memberId, $conversationId, $messageId]);
 
+            // Initialize default message delivery state
+            $state = 'sent';
+
             // If it is a DM, build default delivery states for the recipient
             if ($conversation['type'] === 'dm') {
                 // Find target recipient
@@ -142,6 +168,61 @@ class MessageController extends Controller
                         VALUES (?, ?, ?)
                     ");
                     $stmtDelivery->execute([$messageId, $recipientId, $state]);
+                }
+            }
+
+            // Parse mentions (e.g. data-member-id="X")
+            if (preg_match_all('/data-member-id="(\d+)"/', $body, $matches)) {
+                $mentionedIds = array_unique(array_map('intval', $matches[1]));
+            }
+            // Filter out sender
+            $mentionedIds = array_filter($mentionedIds, function ($id) use ($memberId) {
+                return $id !== (int)$memberId;
+            });
+
+            if ($conversation['type'] === 'channel') {
+                $stmtChan = $db->prepare("SELECT name, slug FROM channels WHERE id = ?");
+                $stmtChan->execute([$conversation['channel_id']]);
+                $chanRow = $stmtChan->fetch();
+                if ($chanRow) {
+                    $channelName = $chanRow['name'];
+                    $channelSlug = $chanRow['slug'];
+                }
+            }
+
+            if (!empty($mentionedIds)) {
+                $plainBodyText = trim(html_entity_decode(strip_tags($body), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                // Replace non-breaking spaces or multiple spaces
+                $plainBodyText = preg_replace('/\s+/', ' ', $plainBodyText);
+                if (mb_strlen($plainBodyText) > 200) {
+                    $plainBodyText = mb_substr($plainBodyText, 0, 200) . '...';
+                }
+
+                if ($conversation['type'] === 'channel') {
+                    $notifBody = 'mentioned you in #' . ($channelName ?? 'channel') . ': "' . $plainBodyText . '"';
+                    $notifBodyHtml = 'mentioned you in <span class="text-primary">#' . htmlspecialchars($channelName ?? 'channel') . '</span>: "' . htmlspecialchars($plainBodyText) . '"';
+                } else {
+                    $notifBody = 'mentioned you: "' . $plainBodyText . '"';
+                    $notifBodyHtml = 'mentioned you: "' . htmlspecialchars($plainBodyText) . '"';
+                }
+
+                $stmtNotif = $db->prepare("
+                    INSERT INTO notifications (workspace_id, recipient_id, type, actor_id, title, body, body_html, reference_type, reference_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ");
+
+                foreach ($mentionedIds as $recipientId) {
+                    $stmtNotif->execute([
+                        $workspaceId,
+                        $recipientId,
+                        'mention',
+                        $memberId,
+                        null,
+                        $notifBody,
+                        $notifBodyHtml,
+                        'message',
+                        $messageId
+                    ]);
                 }
             }
 
@@ -199,13 +280,22 @@ class MessageController extends Controller
                     'conversation_id' => $msgDetails['conversation_id'],
                     'conversation_type' => $conversation['type'],
                     'channel_id' => $conversation['channel_id'] ?? null,
+                    'channel_name' => $channelName,
+                    'channel_slug' => $channelSlug,
                     'sender_id' => $msgDetails['sender_id'],
                     'sender_name' => $msgDetails['sender_name'],
                     'sender_avatar' => $msgDetails['avatar_path'],
                     'sender_username' => $msgDetails['sender_username'],
                     'recipient_username' => $recipientUsername,
-                    'body' => $msgDetails['body'],
-                    'message_type' => $msgDetails['message_type'],
+                    'mentioned_ids' => array_values($mentionedIds),
+                    'body' => $msgDetails['message_type'] === 'voice' ? '' : $msgDetails['body'],
+                    'voice_duration_seconds' => $msgDetails['message_type'] === 'voice'
+                        ? max(0, (int)trim((string)$msgDetails['body']))
+                        : 0,
+                    'message_type' => GiphyUrl::resolveMessageType(
+                        (string)($msgDetails['message_type'] ?? 'text'),
+                        (string)($msgDetails['body'] ?? '')
+                    ),
                     'reply_to_id' => $msgDetails['reply_to_id'],
                     'created_at' => $msgDetails['created_at'],
                     'time_label' => date('h:i A', strtotime($msgDetails['created_at'])),
@@ -233,7 +323,7 @@ class MessageController extends Controller
             $this->jsonResponse(['error' => 'Unauthorized'], 401);
         }
 
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $input = $this->getRequestInput();
         $messageId = $input['message_id'] ?? 0;
         $emoji = trim($input['emoji'] ?? '');
 
@@ -244,53 +334,200 @@ class MessageController extends Controller
         $db = Model::db();
 
         // Verify message belongs to this workspace
-        $stmt = $db->prepare("SELECT id, conversation_id FROM messages WHERE id = ? AND workspace_id = ?");
+        $stmt = $db->prepare("SELECT id, conversation_id, sender_id FROM messages WHERE id = ? AND workspace_id = ?");
         $stmt->execute([$messageId, $workspaceId]);
         $message = $stmt->fetch();
         if (!$message) {
             $this->jsonResponse(['error' => 'Message not found'], 404);
         }
 
-        // Check if already reacted
-        $stmt = $db->prepare("
-            SELECT id FROM message_reactions 
-            WHERE message_id = ? AND workspace_member_id = ? AND emoji = ?
-        ");
-        $stmt->execute([$messageId, $memberId, $emoji]);
-        $existing = $stmt->fetch();
+        // Check if the member already reacted to this message.
+        $stmt = $db->prepare(
+            "SELECT id, emoji FROM message_reactions WHERE message_id = ? AND workspace_member_id = ?"
+        );
+        $stmt->execute([$messageId, $memberId]);
+        $existingReactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        if ($existing) {
-            // Delete reaction (toggle off)
-            $stmt = $db->prepare("DELETE FROM message_reactions WHERE id = ?");
-            $stmt->execute([$existing['id']]);
-            $action = 'removed';
+        $prevEmoji = null;
+        $action = 'added';
+
+        $prevCount = null;
+        if (!empty($existingReactions)) {
+            foreach ($existingReactions as $existing) {
+                if ($existing['emoji'] === $emoji) {
+                    $prevEmoji = $emoji;
+                    $stmt = $db->prepare("DELETE FROM message_reactions WHERE id = ?");
+                    $stmt->execute([$existing['id']]);
+                    $action = 'removed';
+                    break;
+                }
+            }
+
+            if ($action !== 'removed') {
+                $prevEmoji = $existingReactions[0]['emoji'];
+                $stmt = $db->prepare("DELETE FROM message_reactions WHERE message_id = ? AND workspace_member_id = ?");
+                $stmt->execute([$messageId, $memberId]);
+
+                $stmt = $db->prepare(
+                    "INSERT INTO message_reactions (message_id, workspace_member_id, emoji) VALUES (?, ?, ?)"
+                );
+                $stmt->execute([$messageId, $memberId, $emoji]);
+                $action = 'replaced';
+
+                $stmt = $db->prepare(
+                    "SELECT COUNT(*) as count FROM message_reactions WHERE message_id = ? AND emoji = ?"
+                );
+                $stmt->execute([$messageId, $prevEmoji]);
+                $prevCountRow = $stmt->fetch();
+                $prevCount = (int)($prevCountRow['count'] ?? 0);
+            }
         } else {
-            // Add reaction
-            $stmt = $db->prepare("
-                INSERT INTO message_reactions (message_id, workspace_member_id, emoji)
-                VALUES (?, ?, ?)
-            ");
+            $stmt = $db->prepare(
+                "INSERT INTO message_reactions (message_id, workspace_member_id, emoji) VALUES (?, ?, ?)"
+            );
             $stmt->execute([$messageId, $memberId, $emoji]);
             $action = 'added';
         }
 
+        if ($action === 'added' && (int)$message['sender_id'] !== (int)$memberId) {
+            $stmtNotif = $db->prepare(
+                "INSERT INTO notifications (workspace_id, recipient_id, type, actor_id, title, body, body_html, reference_type, reference_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            );
+
+            $notificationTitle = 'Reacted to your message';
+            $notificationBody = 'reacted with ' . $emoji . ' to your message';
+            $notificationBodyHtml = 'reacted with <strong>' . htmlspecialchars($emoji, ENT_QUOTES, 'UTF-8') . '</strong> to your message';
+
+            $stmtNotif->execute([
+                $workspaceId,
+                (int)$message['sender_id'],
+                'reaction',
+                $memberId,
+                $notificationTitle,
+                $notificationBody,
+                $notificationBodyHtml,
+                'message',
+                $messageId
+            ]);
+        }
+
         // Get total reaction counts for this message/emoji
-        $stmt = $db->prepare("
-            SELECT COUNT(*) as count 
-            FROM message_reactions 
-            WHERE message_id = ? AND emoji = ?
-        ");
+        $stmt = $db->prepare(
+            "SELECT COUNT(*) as count FROM message_reactions WHERE message_id = ? AND emoji = ?"
+        );
         $stmt->execute([$messageId, $emoji]);
         $countRow = $stmt->fetch();
 
-        $this->jsonResponse([
+        $reactions = 
+            MessageEnricher::getMessageReactions($messageId, $memberId);
+
+        $response = [
             'success' => true,
             'action' => $action,
             'emoji' => $emoji,
+            'prev_emoji' => $prevEmoji,
             'message_id' => $messageId,
             'conversation_id' => $message['conversation_id'],
             'member_id' => $memberId,
-            'count' => (int)($countRow['count'] ?? 0)
+            'recipient_member_id' => (int)$message['sender_id'],
+            'count' => (int)($countRow['count'] ?? 0),
+            'reactions' => $reactions
+        ];
+        if ($prevCount !== null) {
+            $response['prev_count'] = $prevCount;
+        }
+
+        $this->jsonResponse($response);
+    }
+
+    public function reactionDetails(): void
+    {
+        $user = Session::user();
+        $workspaceId = $user['workspace_id'] ?? 0;
+        $memberId = $user['workspace_member_id'] ?? 0;
+
+        if ($workspaceId === 0 || $memberId === 0) {
+            $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+
+        $messageId = (int)($_GET['message_id'] ?? 0);
+        $emoji = trim((string)($_GET['emoji'] ?? ''));
+
+        if ($messageId <= 0) {
+            $this->jsonResponse(['error' => 'message_id is required'], 400);
+        }
+
+        $db = Model::db();
+        $stmt = $db->prepare("SELECT m.conversation_id, c.type AS conversation_type, c.channel_id FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE m.id = ? AND m.workspace_id = ?");
+        $stmt->execute([$messageId, $workspaceId]);
+        $message = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$message) {
+            $this->jsonResponse(['error' => 'Message not found'], 404);
+        }
+
+        if (!$this->memberCanAccessConversation(
+            $db,
+            (int)$message['conversation_id'],
+            $message['conversation_type'],
+            (int)($message['channel_id'] ?? 0),
+            $memberId
+        )) {
+            $this->jsonResponse(['error' => 'Forbidden'], 403);
+        }
+
+        $query = "SELECT mr.emoji, COUNT(*) as count, MAX(CASE WHEN mr.workspace_member_id = ? THEN 1 ELSE 0 END) as reacted FROM message_reactions mr WHERE mr.message_id = ?";
+        $params = [$memberId, $messageId];
+        if ($emoji !== '') {
+            $query .= " AND mr.emoji = ?";
+            $params[] = $emoji;
+        }
+        $query .= " GROUP BY mr.emoji";
+
+        $stmt = $db->prepare($query);
+        $stmt->execute($params);
+        $reactions = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $reactions[$row['emoji']] = [
+                'emoji' => $row['emoji'],
+                'count' => (int)$row['count'],
+                'reacted' => (bool)$row['reacted'],
+                'reactors' => []
+            ];
+        }
+
+        $query = "SELECT mr.emoji, wm.id as member_id, u.username, CONCAT(u.first_name, ' ', u.last_name) as name, COALESCE(u.avatar_path, '') as avatar FROM message_reactions mr JOIN workspace_members wm ON wm.id = mr.workspace_member_id JOIN users u ON u.id = wm.user_id WHERE mr.message_id = ?";
+        $params = [$messageId];
+        if ($emoji !== '') {
+            $query .= " AND mr.emoji = ?";
+            $params[] = $emoji;
+        }
+        $query .= " ORDER BY mr.created_at ASC";
+
+        $stmt = $db->prepare($query);
+        $stmt->execute($params);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $emojiKey = $row['emoji'];
+            if (!isset($reactions[$emojiKey])) {
+                $reactions[$emojiKey] = [
+                    'emoji' => $emojiKey,
+                    'count' => 0,
+                    'reacted' => false,
+                    'reactors' => []
+                ];
+            }
+            $reactions[$emojiKey]['reactors'][] = [
+                'member_id' => (int)$row['member_id'],
+                'username' => $row['username'],
+                'name' => trim($row['name']),
+                'avatar' => $row['avatar'] ?: DEFAULT_AVATAR_URL,
+                'is_you' => ((int)$row['member_id'] === (int)$memberId)
+            ];
+        }
+
+        $this->jsonResponse([
+            'success' => true,
+            'message_id' => $messageId,
+            'reactions' => array_values($reactions)
         ]);
     }
 
@@ -304,7 +541,7 @@ class MessageController extends Controller
             $this->jsonResponse(['error' => 'Unauthorized'], 401);
         }
 
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $input = $this->getRequestInput();
         $messageId = $input['message_id'] ?? 0;
         $body = trim($input['body'] ?? '');
 
@@ -359,8 +596,17 @@ class MessageController extends Controller
             $this->jsonResponse(['error' => 'Unauthorized'], 401);
         }
 
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
-        $messageId = $input['message_id'] ?? 0;
+        $input = $this->getRequestInput();
+        $messageId = (int)($input['message_id'] ?? 0);
+        $scope = strtolower(trim((string)($input['scope'] ?? 'me')));
+
+        if ($messageId <= 0) {
+            $this->jsonResponse(['error' => 'Message ID is required'], 400);
+        }
+
+        if (!in_array($scope, ['me', 'everyone'], true)) {
+            $this->jsonResponse(['error' => 'Invalid delete scope'], 400);
+        }
 
         $db = Model::db();
 
@@ -373,8 +619,18 @@ class MessageController extends Controller
             $this->jsonResponse(['error' => 'Message not found'], 404);
         }
 
-        // If the current user is the sender OR is admin/owner, they can do a delete for everyone
-        if ((int)$message['sender_id'] === (int)$memberId || in_array($userRole, ['owner', 'admin'])) {
+        if ($message['deleted_for_everyone_at'] !== null && $scope === 'everyone') {
+            $this->jsonResponse(['error' => 'Message is already deleted for everyone'], 400);
+        }
+
+        $isSender = (int)$message['sender_id'] === (int)$memberId;
+        $isAdmin = in_array($userRole, ['owner', 'admin'], true);
+
+        if ($scope === 'everyone') {
+            if (!$isSender && !$isAdmin) {
+                $this->jsonResponse(['error' => 'You can only delete your own messages for everyone'], 403);
+            }
+
             $stmt = $db->prepare("
                 UPDATE messages 
                 SET deleted_for_everyone_at = CURRENT_TIMESTAMP(3) 
@@ -382,7 +638,9 @@ class MessageController extends Controller
             ");
             $stmt->execute([$messageId]);
 
-            // Audit Log
+            $stmt = $db->prepare("DELETE FROM message_pins WHERE message_id = ?");
+            $stmt->execute([$messageId]);
+
             $stmtAudit = $db->prepare("
                 INSERT INTO audit_logs (workspace_id, actor_member_id, actor_label, status, activity_type, message)
                 VALUES (?, ?, ?, 'complete', 'message_delete', ?)
@@ -392,7 +650,7 @@ class MessageController extends Controller
                 $workspaceId,
                 $memberId,
                 $displayName,
-                "Deleted message ID {$messageId}"
+                "Deleted message ID {$messageId} for everyone"
             ]);
 
             $this->jsonResponse([
@@ -401,22 +659,221 @@ class MessageController extends Controller
                 'message_id' => $messageId,
                 'conversation_id' => $message['conversation_id']
             ]);
-        } else {
-            // Otherwise, it is just deleted locally for this user
-            $stmt = $db->prepare("
-                INSERT INTO message_user_deletions (message_id, workspace_member_id)
-                VALUES (?, ?)
-                ON DUPLICATE KEY UPDATE deleted_at = CURRENT_TIMESTAMP
-            ");
-            $stmt->execute([$messageId, $memberId]);
-
-            $this->jsonResponse([
-                'success' => true,
-                'action' => 'local',
-                'message_id' => $messageId,
-                'conversation_id' => $message['conversation_id']
-            ]);
         }
+
+        // Delete for me — hide only for the current user
+        $stmt = $db->prepare("
+            INSERT INTO message_user_deletions (message_id, workspace_member_id)
+            VALUES (?, ?)
+            ON DUPLICATE KEY UPDATE deleted_at = CURRENT_TIMESTAMP
+        ");
+        $stmt->execute([$messageId, $memberId]);
+
+        $this->jsonResponse([
+            'success' => true,
+            'action' => 'local',
+            'message_id' => $messageId,
+            'conversation_id' => $message['conversation_id']
+        ]);
+    }
+
+    public function pin(): void
+    {
+        $user = Session::user();
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
+        $memberId = (int)($user['workspace_member_id'] ?? 0);
+
+        if ($workspaceId === 0 || $memberId === 0) {
+            $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+
+        $input = $this->getRequestInput();
+        $messageId = (int)($input['message_id'] ?? 0);
+        $action = strtolower(trim((string)($input['action'] ?? 'pin')));
+
+        if ($messageId <= 0) {
+            $this->jsonResponse(['error' => 'Message ID is required'], 400);
+        }
+
+        if (!in_array($action, ['pin', 'unpin'], true)) {
+            $this->jsonResponse(['error' => 'Invalid action'], 400);
+        }
+
+        $db = Model::db();
+
+        $stmt = $db->prepare("
+            SELECT m.*, c.type AS conversation_type, c.channel_id
+            FROM messages m
+            JOIN conversations c ON c.id = m.conversation_id
+            WHERE m.id = ? AND m.workspace_id = ? AND m.deleted_for_everyone_at IS NULL
+        ");
+        $stmt->execute([$messageId, $workspaceId]);
+        $message = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$message) {
+            $this->jsonResponse(['error' => 'Message not found'], 404);
+        }
+
+        if (!$this->memberCanAccessConversation(
+            $db,
+            (int)$message['conversation_id'],
+            $message['conversation_type'],
+            (int)($message['channel_id'] ?? 0),
+            $memberId
+        )) {
+            $this->jsonResponse(['error' => 'Forbidden'], 403);
+        }
+
+        $conversationId = (int)$message['conversation_id'];
+
+        if ($action === 'pin') {
+            $stmt = $db->prepare("
+                INSERT IGNORE INTO message_pins (conversation_id, message_id, pinned_by)
+                VALUES (?, ?, ?)
+            ");
+            $stmt->execute([$conversationId, $messageId, $memberId]);
+        } else {
+            $stmt = $db->prepare("DELETE FROM message_pins WHERE conversation_id = ? AND message_id = ? AND pinned_by = ?");
+            $stmt->execute([$conversationId, $messageId, $memberId]);
+        }
+
+        $this->jsonResponse([
+            'success' => true,
+            'action' => $action,
+            'message_id' => $messageId,
+            'conversation_id' => $conversationId,
+            'is_pinned' => $action === 'pin',
+        ]);
+    }
+
+    public function history(): void
+    {
+        $user = Session::user();
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
+        $memberId = (int)($user['workspace_member_id'] ?? 0);
+
+        if ($workspaceId === 0 || $memberId === 0) {
+            $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+
+        $conversationId = (int)($_GET['conversation_id'] ?? 0);
+        $beforeId = (int)($_GET['before_id'] ?? 0);
+        $afterId = (int)($_GET['after_id'] ?? 0);
+        $limit = (int)($_GET['limit'] ?? 30);
+
+        if ($conversationId <= 0) {
+            $this->jsonResponse(['error' => 'conversation_id is required'], 400);
+        }
+        if ($beforeId <= 0 && $afterId <= 0) {
+            $this->jsonResponse(['error' => 'Either before_id or after_id is required'], 400);
+        }
+
+        $db = Model::db();
+        $stmt = $db->prepare("SELECT * FROM conversations WHERE id = ? AND workspace_id = ?");
+        $stmt->execute([$conversationId, $workspaceId]);
+        $conversation = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$conversation) {
+            $this->jsonResponse(['error' => 'Conversation not found'], 404);
+        }
+
+        if (!$this->memberCanAccessConversation(
+            $db,
+            $conversationId,
+            $conversation['type'],
+            (int)($conversation['channel_id'] ?? 0),
+            $memberId
+        )) {
+            $this->jsonResponse(['error' => 'Forbidden'], 403);
+        }
+
+        if ($conversation['type'] !== 'dm' && $conversation['type'] !== 'channel') {
+            $this->jsonResponse(['error' => 'History pagination is only available for DMs and Channels'], 400);
+        }
+
+        if ($conversation['type'] === 'channel') {
+            if ($afterId > 0) {
+                $page = \App\Models\ChannelConversation::historyPageAfter($conversationId, $memberId, $afterId, $limit);
+                $this->jsonResponse([
+                    'success' => true,
+                    'messages' => $page['messages'],
+                    'has_more' => $page['has_more'],
+                    'newest_message_id' => $page['newest_message_id'],
+                ]);
+            } else {
+                $page = \App\Models\ChannelConversation::historyPage($conversationId, $memberId, $beforeId, $limit);
+                $this->jsonResponse([
+                    'success' => true,
+                    'messages' => $page['messages'],
+                    'has_more' => $page['has_more'],
+                    'oldest_message_id' => $page['oldest_message_id'],
+                ]);
+            }
+        } else {
+            if ($afterId > 0) {
+                $page = \App\Models\DmsConversation::historyPageAfter($conversationId, $memberId, $afterId, $limit);
+                $this->jsonResponse([
+                    'success' => true,
+                    'messages' => $page['messages'],
+                    'has_more' => $page['has_more'],
+                    'newest_message_id' => $page['newest_message_id'],
+                ]);
+            } else {
+                $page = \App\Models\DmsConversation::historyPage($conversationId, $memberId, $beforeId, $limit);
+                $this->jsonResponse([
+                    'success' => true,
+                    'messages' => $page['messages'],
+                    'has_more' => $page['has_more'],
+                    'oldest_message_id' => $page['oldest_message_id'],
+                ]);
+            }
+        }
+    }
+
+    public function context(): void
+    {
+        $user = Session::user();
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
+        $memberId = (int)($user['workspace_member_id'] ?? 0);
+
+        if ($workspaceId === 0 || $memberId === 0) {
+            $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+
+        $conversationId = (int)($_GET['conversation_id'] ?? 0);
+        $messageId = (int)($_GET['message_id'] ?? 0);
+        $limit = (int)($_GET['limit'] ?? 30);
+
+        if ($conversationId <= 0 || $messageId <= 0) {
+            $this->jsonResponse(['error' => 'conversation_id and message_id are required'], 400);
+        }
+
+        $db = Model::db();
+        $stmt = $db->prepare('SELECT * FROM conversations WHERE id = ? AND workspace_id = ?');
+        $stmt->execute([$conversationId, $workspaceId]);
+        $conversation = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$conversation) {
+            $this->jsonResponse(['error' => 'Conversation not found'], 404);
+        }
+
+        if (!$this->memberCanAccessConversation(
+            $db,
+            $conversationId,
+            $conversation['type'],
+            (int)($conversation['channel_id'] ?? 0),
+            $memberId
+        )) {
+            $this->jsonResponse(['error' => 'Forbidden'], 403);
+        }
+
+        if (($conversation['type'] ?? '') === 'channel') {
+            $page = \App\Models\ChannelConversation::contextPage($conversationId, $memberId, $messageId, $limit);
+        } else {
+            $page = \App\Models\DmsConversation::contextPage($conversationId, $memberId, $messageId, $limit);
+        }
+
+        $this->jsonResponse(array_merge(['success' => true], $page));
     }
 
     public function forward(): void
@@ -429,7 +886,7 @@ class MessageController extends Controller
             $this->jsonResponse(['error' => 'Unauthorized'], 401);
         }
 
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $input = $this->getRequestInput();
         $messageId = (int)($input['message_id'] ?? 0);
         $targets = $input['targets'] ?? [];
 
@@ -626,7 +1083,7 @@ class MessageController extends Controller
             $this->jsonResponse(['error' => 'Unauthorized'], 401);
         }
 
-        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $input = $this->getRequestInput();
         $conversationId = $input['conversation_id'] ?? 0;
         $lastReadMessageId = $input['last_read_message_id'] ?? null;
 
@@ -699,6 +1156,36 @@ class MessageController extends Controller
         $stmt->execute([$conversationId, $memberId]);
 
         return (bool)$stmt->fetch();
+    }
+
+    /**
+     * @param array<int, int|string> $fileIds
+     */
+    private function resolveAttachmentMessageType(PDO $db, array $fileIds, int $workspaceId): string
+    {
+        $fileIds = array_values(array_filter(array_map('intval', $fileIds)));
+        if (empty($fileIds)) {
+            return 'file';
+        }
+
+        $placeholders = implode(',', array_fill(0, count($fileIds), '?'));
+        $stmt = $db->prepare("SELECT category FROM files WHERE workspace_id = ? AND id IN ($placeholders)");
+        $stmt->execute(array_merge([$workspaceId], $fileIds));
+        $categories = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        if (empty($categories)) {
+            return 'file';
+        }
+
+        $allAudio = true;
+        foreach ($categories as $category) {
+            if ($category !== 'audio') {
+                $allAudio = false;
+                break;
+            }
+        }
+
+        return ($allAudio && count($categories) === 1) ? 'voice' : 'file';
     }
 
     /**
@@ -776,8 +1263,14 @@ class MessageController extends Controller
             'sender_avatar' => $msgDetails['avatar_path'],
             'sender_username' => $msgDetails['sender_username'],
             'recipient_username' => $recipientUsername,
-            'body' => $msgDetails['body'],
-            'message_type' => $msgDetails['message_type'],
+            'body' => $msgDetails['message_type'] === 'voice' ? '' : $msgDetails['body'],
+            'voice_duration_seconds' => $msgDetails['message_type'] === 'voice'
+                ? max(0, (int)trim((string)$msgDetails['body']))
+                : 0,
+            'message_type' => GiphyUrl::resolveMessageType(
+                (string)($msgDetails['message_type'] ?? 'text'),
+                (string)($msgDetails['body'] ?? '')
+            ),
             'reply_to_id' => $msgDetails['reply_to_id'],
             'created_at' => $msgDetails['created_at'],
             'time_label' => date('h:i A', strtotime($msgDetails['created_at'])),
@@ -785,13 +1278,5 @@ class MessageController extends Controller
             'read_status' => $readStatus,
             'is_forwarded' => !empty($msgDetails['forwarded_from_message_id']),
         ];
-    }
-}
-
-// Simple helper to check if a body string is a direct Giphy GIF URL
-if (!function_exists('preg_is_gif_url')) {
-    function preg_is_gif_url(string $url): bool {
-        return (bool) preg_match('/^https?:\/\/[a-zA-Z0-9.-]+\.giphy\.com\/v1\/gifs\/.*$/i', $url) 
-            || (bool) preg_match('/^https?:\/\/media[0-9]*\.giphy\.com\/media\/[a-zA-Z0-9]+\/giphy\.(gif|webp|mp4)$/i', $url);
     }
 }

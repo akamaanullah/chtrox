@@ -1,120 +1,136 @@
-document.addEventListener('DOMContentLoaded', function () {
-    const filesTable = document.getElementById('filesTable');
-    if (!filesTable) return;
+(function () {
+    var sessionAbort = null;
 
-    const filesSearch = document.getElementById('filesSearch');
-    const filesFilter = document.getElementById('filesFilter');
-    const rowsPerPageSelect = document.getElementById('filesPerPage');
-    const prevPageBtn = document.getElementById('filesPrevPage');
-    const nextPageBtn = document.getElementById('filesNextPage');
-    const pageNumbersContainer = document.getElementById('filesPageNumbers');
-    const showingStart = document.getElementById('filesShowingStart');
-    const showingEnd = document.getElementById('filesShowingEnd');
-    const totalRowsSpan = document.getElementById('filesTotalRows');
+    function initFilesTab() {
+        if (sessionAbort) {
+            sessionAbort.abort();
+        }
+        sessionAbort = new AbortController();
+        var signal = sessionAbort.signal;
 
-    const fileRows = Array.from(filesTable.querySelectorAll('tbody tr.file-row'));
+        var filesTable = document.getElementById('filesTable');
+        if (!filesTable) return;
 
-    let currentPage = 1;
-    let rowsPerPage = parseInt(rowsPerPageSelect.value, 10);
-    let filteredRows = [...fileRows];
+        var filesSearch = document.getElementById('filesSearch');
+        var filesFilter = document.getElementById('filesFilter');
+        var rowsPerPageSelect = document.getElementById('filesPerPage');
+        var prevPageBtn = document.getElementById('filesPrevPage');
+        var nextPageBtn = document.getElementById('filesNextPage');
+        var pageNumbersContainer = document.getElementById('filesPageNumbers');
+        var showingStart = document.getElementById('filesShowingStart');
+        var showingEnd = document.getElementById('filesShowingEnd');
+        var totalRowsSpan = document.getElementById('filesTotalRows');
 
-    function updatePagination() {
-        const totalRows = filteredRows.length;
-        const totalPages = Math.ceil(totalRows / rowsPerPage) || 1;
+        var fileRows = Array.from(filesTable.querySelectorAll('tbody tr.file-row'));
 
-        if (currentPage > totalPages) currentPage = totalPages;
-        if (currentPage < 1) currentPage = 1;
+        var currentPage = 1;
+        var rowsPerPage = parseInt(rowsPerPageSelect.value, 10);
+        var filteredRows = fileRows.slice();
 
-        const start = (currentPage - 1) * rowsPerPage;
-        const end = start + rowsPerPage;
+        function updatePagination() {
+            var totalRows = filteredRows.length;
+            var totalPages = Math.ceil(totalRows / rowsPerPage) || 1;
 
-        fileRows.forEach(row => {
-            row.style.display = 'none';
-        });
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
 
-        filteredRows.slice(start, end).forEach(row => {
-            row.style.display = '';
-        });
+            var start = (currentPage - 1) * rowsPerPage;
+            var end = start + rowsPerPage;
 
-        showingStart.textContent = totalRows === 0 ? 0 : start + 1;
-        showingEnd.textContent = Math.min(end, totalRows);
-        totalRowsSpan.textContent = totalRows;
-
-        renderPageNumbers(totalPages);
-
-        prevPageBtn.disabled = currentPage === 1;
-        nextPageBtn.disabled = currentPage === totalPages || totalRows === 0;
-
-        if (window.lucide) window.lucide.createIcons();
-    }
-
-    function renderPageNumbers(totalPages) {
-        pageNumbersContainer.innerHTML = '';
-
-        for (let i = 1; i <= totalPages; i++) {
-            const pageNum = document.createElement('button');
-            pageNum.type = 'button';
-            pageNum.className = `page-num${i === currentPage ? ' active' : ''}`;
-            pageNum.textContent = i;
-            pageNum.setAttribute('aria-label', `Page ${i}`);
-            pageNum.addEventListener('click', () => {
-                currentPage = i;
-                updatePagination();
+            fileRows.forEach(function (row) {
+                row.style.display = 'none';
             });
-            pageNumbersContainer.appendChild(pageNum);
+
+            filteredRows.slice(start, end).forEach(function (row) {
+                row.style.display = '';
+            });
+
+            showingStart.textContent = totalRows === 0 ? 0 : start + 1;
+            showingEnd.textContent = Math.min(end, totalRows);
+            totalRowsSpan.textContent = totalRows;
+
+            renderPageNumbers(totalPages);
+
+            prevPageBtn.disabled = currentPage === 1;
+            nextPageBtn.disabled = currentPage === totalPages || totalRows === 0;
+
+            if (window.lucide) window.lucide.createIcons();
         }
-    }
 
-    function applyFilters() {
-        const searchQuery = filesSearch.value.toLowerCase().trim();
-        const filterValue = filesFilter.value;
+        function renderPageNumbers(totalPages) {
+            pageNumbersContainer.innerHTML = '';
 
-        filteredRows = fileRows.filter(row => {
-            const fileName = row.querySelector('.file-name-text')?.textContent.toLowerCase() || '';
-            const sharedBy = row.querySelector('.shared-by-text')?.textContent.toLowerCase() || '';
-            const isSharedByYou = row.dataset.sharedByYou === '1';
-
-            const matchesSearch = !searchQuery
-                || fileName.includes(searchQuery)
-                || sharedBy.includes(searchQuery);
-
-            let matchesFilter = true;
-            if (filterValue === 'shared_by_me') {
-                matchesFilter = isSharedByYou;
-            } else if (filterValue === 'shared_by_others') {
-                matchesFilter = !isSharedByYou;
+            for (var i = 1; i <= totalPages; i++) {
+                (function (pageIndex) {
+                    var pageNum = document.createElement('button');
+                    pageNum.type = 'button';
+                    pageNum.className = 'page-num' + (pageIndex === currentPage ? ' active' : '');
+                    pageNum.textContent = pageIndex;
+                    pageNum.setAttribute('aria-label', 'Page ' + pageIndex);
+                    pageNum.addEventListener('click', function () {
+                        currentPage = pageIndex;
+                        updatePagination();
+                    }, { signal: signal });
+                    pageNumbersContainer.appendChild(pageNum);
+                })(i);
             }
+        }
 
-            return matchesSearch && matchesFilter;
-        });
+        function applyFilters() {
+            var searchQuery = filesSearch.value.toLowerCase().trim();
+            var filterValue = filesFilter.value;
 
-        currentPage = 1;
+            filteredRows = fileRows.filter(function (row) {
+                var fileNameEl = row.querySelector('.file-name-text');
+                var sharedByEl = row.querySelector('.shared-by-text');
+                var fileName = fileNameEl ? fileNameEl.textContent.toLowerCase() : '';
+                var sharedBy = sharedByEl ? sharedByEl.textContent.toLowerCase() : '';
+                var isSharedByYou = row.dataset.sharedByYou === '1';
+
+                var matchesSearch = !searchQuery
+                    || fileName.indexOf(searchQuery) !== -1
+                    || sharedBy.indexOf(searchQuery) !== -1;
+
+                var matchesFilter = true;
+                if (filterValue === 'shared_by_me') {
+                    matchesFilter = isSharedByYou;
+                } else if (filterValue === 'shared_by_others') {
+                    matchesFilter = !isSharedByYou;
+                }
+
+                return matchesSearch && matchesFilter;
+            });
+
+            currentPage = 1;
+            updatePagination();
+        }
+
+        filesSearch.addEventListener('input', applyFilters, { signal: signal });
+        filesFilter.addEventListener('change', applyFilters, { signal: signal });
+
+        rowsPerPageSelect.addEventListener('change', function () {
+            rowsPerPage = parseInt(this.value, 10);
+            currentPage = 1;
+            updatePagination();
+        }, { signal: signal });
+
+        prevPageBtn.addEventListener('click', function () {
+            if (currentPage > 1) {
+                currentPage--;
+                updatePagination();
+            }
+        }, { signal: signal });
+
+        nextPageBtn.addEventListener('click', function () {
+            var totalPages = Math.ceil(filteredRows.length / rowsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                updatePagination();
+            }
+        }, { signal: signal });
+
         updatePagination();
     }
 
-    filesSearch.addEventListener('input', applyFilters);
-    filesFilter.addEventListener('change', applyFilters);
-
-    rowsPerPageSelect.addEventListener('change', function () {
-        rowsPerPage = parseInt(this.value, 10);
-        currentPage = 1;
-        updatePagination();
-    });
-
-    prevPageBtn.addEventListener('click', () => {
-        if (currentPage > 1) {
-            currentPage--;
-            updatePagination();
-        }
-    });
-
-    nextPageBtn.addEventListener('click', () => {
-        const totalPages = Math.ceil(filteredRows.length / rowsPerPage);
-        if (currentPage < totalPages) {
-            currentPage++;
-            updatePagination();
-        }
-    });
-
-    updatePagination();
-});
+    document.addEventListener('chatrox:page_load', initFilesTab);
+})();

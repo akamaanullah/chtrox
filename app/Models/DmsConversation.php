@@ -4,11 +4,14 @@ namespace App\Models;
 
 use App\Core\Model;
 use App\Core\Session;
+use App\Helpers\GiphyUrl;
+use App\Helpers\MessageEnricher;
 use PDO;
 
 class DmsConversation extends Model
 {
     public const INITIAL_VISIBLE = 20;
+    public const INITIAL_LOAD = 30;
 
     public static function users(): array
     {
@@ -36,7 +39,7 @@ class DmsConversation extends Model
                 'id' => $row['member_id'],
                 'username' => $row['username'],
                 'name' => $row['first_name'] . ' ' . $row['last_name'],
-                'avatar' => $row['avatar_path'] ?: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150'
+                'avatar' => $row['avatar_path'] ?: DEFAULT_AVATAR_URL
             ];
         }
 
@@ -54,7 +57,7 @@ class DmsConversation extends Model
                 'id' => 0,
                 'username' => '',
                 'name' => 'No User Available',
-                'avatar' => 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150'
+                'avatar' => DEFAULT_AVATAR_URL
             ],
         ];
     }
@@ -79,16 +82,13 @@ class DmsConversation extends Model
                 other_u.first_name,
                 other_u.last_name,
                 other_u.avatar_path,
-                (
-                    SELECT body FROM messages m2 
-                    WHERE m2.conversation_id = c.id 
-                    ORDER BY m2.id DESC LIMIT 1
-                ) as last_message_body,
-                (
-                    SELECT created_at FROM messages m2 
-                    WHERE m2.conversation_id = c.id 
-                    ORDER BY m2.id DESC LIMIT 1
-                ) as last_message_time,
+                m.id as last_message_id,
+                m.sender_id as last_message_sender_id,
+                m.body as last_message_body,
+                m.message_type as last_message_type,
+                m.created_at as last_message_time,
+                crc_other.last_read_message_id as other_last_read_message_id,
+                up.status as other_presence_status,
                 (
                     SELECT COUNT(*) 
                     FROM messages m3
@@ -103,6 +103,13 @@ class DmsConversation extends Model
             JOIN conversation_participants cp_other ON c.id = cp_other.conversation_id AND cp_other.workspace_member_id != :member_id AND cp_other.left_at IS NULL
             JOIN workspace_members other_wm ON cp_other.workspace_member_id = other_wm.id
             JOIN users other_u ON other_wm.user_id = other_u.id
+            LEFT JOIN messages m ON m.id = (
+                SELECT m2.id FROM messages m2 
+                WHERE m2.conversation_id = c.id AND m2.deleted_for_everyone_at IS NULL
+                ORDER BY m2.id DESC LIMIT 1
+            )
+            LEFT JOIN conversation_read_cursors crc_other ON crc_other.conversation_id = c.id AND crc_other.workspace_member_id = cp_other.workspace_member_id
+            LEFT JOIN user_presence up ON up.user_id = other_wm.user_id
             WHERE c.workspace_id = :workspace_id AND c.type = 'dm'
             ORDER BY COALESCE(c.last_message_at, c.created_at) DESC
         ");
@@ -119,13 +126,45 @@ class DmsConversation extends Model
                 $formattedTime = self::formatMessageTime($row['last_message_time']);
             }
 
+            $preview = 'No messages yet';
+            $lastType = GiphyUrl::resolveMessageType(
+                (string)($row['last_message_type'] ?? 'text'),
+                (string)($row['last_message_body'] ?? '')
+            );
+            if ($lastType === 'voice') {
+                $preview = 'Voice message';
+            } elseif ($lastType === 'gif') {
+                $preview = 'Photo';
+            } elseif (($row['last_message_type'] ?? '') === 'file') {
+                $preview = 'Attachment';
+            } else {
+                $preview = self::bodyToSidebarPreview($row['last_message_body'] ?? '') ?: 'No messages yet';
+            }
+
+            $lastMessageId = (int)($row['last_message_id'] ?? 0);
+            $lastIsMine = $lastMessageId > 0 && (int)($row['last_message_sender_id'] ?? 0) === $memberId;
+            $readStatus = null;
+            if ($lastIsMine) {
+                $otherReadId = (int)($row['other_last_read_message_id'] ?? 0);
+                if ($otherReadId >= $lastMessageId) {
+                    $readStatus = 'read';
+                } elseif (($row['other_presence_status'] ?? '') === 'online') {
+                    $readStatus = 'delivered';
+                } else {
+                    $readStatus = 'sent';
+                }
+            }
+
             $items[] = [
                 'id' => $row['other_username'],
+                'conversation_id' => (int)$row['conversation_id'],
                 'name' => $row['first_name'] . ' ' . $row['last_name'],
-                'avatar' => $row['avatar_path'] ?: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150',
-                'preview' => self::bodyToSidebarPreview($row['last_message_body'] ?? '') ?: 'No messages yet',
+                'avatar' => $row['avatar_path'] ?: DEFAULT_AVATAR_URL,
+                'preview' => $preview,
                 'time' => $formattedTime,
                 'unread' => (int) $row['unread_count'],
+                'last_is_mine' => $lastIsMine,
+                'read_status' => $readStatus,
             ];
         }
 
@@ -135,6 +174,160 @@ class DmsConversation extends Model
     public static function welcomeCards(): array
     {
         return array_values(self::users());
+    }
+
+    /** @return array<string, mixed> */
+    public static function contactProfile(string $otherUsername): array
+    {
+        $user = Session::user();
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
+
+        if ($workspaceId === 0 || $otherUsername === '') {
+            return self::emptyContactProfile();
+        }
+
+        $stmt = self::db()->prepare("
+            SELECT
+                u.username,
+                u.first_name,
+                u.last_name,
+                u.bio,
+                u.avatar_path,
+                wm.job_title,
+                up.status AS presence_status,
+                up.last_seen_at
+            FROM users u
+            JOIN workspace_members wm ON wm.user_id = u.id AND wm.workspace_id = ?
+            LEFT JOIN user_presence up ON up.user_id = u.id
+            WHERE u.username = ? AND wm.status = 'active' AND u.deleted_at IS NULL
+            LIMIT 1
+        ");
+        $stmt->execute([$workspaceId, $otherUsername]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            return self::emptyContactProfile();
+        }
+
+        $name = trim($row['first_name'] . ' ' . $row['last_name']);
+        $presence = self::formatPresence($row['presence_status'] ?? 'offline', $row['last_seen_at'] ?? null);
+        $bio = trim($row['bio'] ?? '');
+        if ($bio === '' && !empty($row['job_title'])) {
+            $bio = $row['job_title'];
+        }
+
+        return [
+            'username' => $row['username'],
+            'name' => $name,
+            'avatar' => $row['avatar_path'] ?: DEFAULT_AVATAR_URL,
+            'handle' => '@' . $row['username'],
+            'bio' => $bio !== '' ? $bio : 'No bio added yet.',
+            'job_title' => trim($row['job_title'] ?? ''),
+            'is_online' => $presence['online'],
+            'presence_label' => $presence['label'],
+        ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public static function conversationMedia(int $conversationId, int $memberId): array
+    {
+        if ($conversationId <= 0 || $memberId <= 0) {
+            return [];
+        }
+
+        $db = self::db();
+        $media = [];
+
+        $stmt = $db->prepare("
+            SELECT f.id, f.original_name, m.id AS message_id, m.created_at
+            FROM messages m
+            JOIN message_attachments ma ON ma.message_id = m.id
+            JOIN files f ON f.id = ma.file_id AND f.category = 'image'
+            WHERE m.conversation_id = ?
+              AND m.deleted_for_everyone_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM message_user_deletions mud
+                  WHERE mud.message_id = m.id AND mud.workspace_member_id = ?
+              )
+            ORDER BY m.id DESC
+        ");
+        $stmt->execute([$conversationId, $memberId]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $media[] = [
+                'url' => BASE_URL . '/files/download/' . $row['id'],
+                'message_id' => (int)$row['message_id'],
+                'label' => $row['original_name'],
+                'created_at' => $row['created_at'],
+            ];
+        }
+
+        $stmt = $db->prepare("
+            SELECT m.id AS message_id, m.body AS url, m.created_at
+            FROM messages m
+            WHERE m.conversation_id = ?
+              AND m.message_type = 'gif'
+              AND m.deleted_for_everyone_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM message_user_deletions mud
+                  WHERE mud.message_id = m.id AND mud.workspace_member_id = ?
+              )
+            ORDER BY m.id DESC
+        ");
+        $stmt->execute([$conversationId, $memberId]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $media[] = [
+                'url' => $row['url'],
+                'message_id' => (int)$row['message_id'],
+                'label' => 'GIF',
+                'created_at' => $row['created_at'],
+            ];
+        }
+
+        usort($media, static function (array $a, array $b): int {
+            return strtotime($b['created_at']) <=> strtotime($a['created_at']);
+        });
+
+        return $media;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public static function conversationFiles(int $conversationId, int $memberId): array
+    {
+        if ($conversationId <= 0 || $memberId <= 0) {
+            return [];
+        }
+
+        $stmt = self::db()->prepare("
+            SELECT f.id, f.original_name, f.mime_type, f.extension, f.size_bytes, f.category, m.id AS message_id
+            FROM messages m
+            JOIN message_attachments ma ON ma.message_id = m.id
+            JOIN files f ON f.id = ma.file_id AND f.category != 'image'
+            WHERE m.conversation_id = ?
+              AND m.deleted_for_everyone_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM message_user_deletions mud
+                  WHERE mud.message_id = m.id AND mud.workspace_member_id = ?
+              )
+            ORDER BY m.id DESC
+        ");
+        $stmt->execute([$conversationId, $memberId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $files = [];
+        foreach ($rows as $row) {
+            $files[] = [
+                'id' => (int)$row['id'],
+                'message_id' => (int)$row['message_id'],
+                'name' => $row['original_name'],
+                'mime_type' => $row['mime_type'],
+                'extension' => $row['extension'],
+                'size_bytes' => (int)$row['size_bytes'],
+                'size_label' => self::formatFileSize((int)$row['size_bytes']),
+                'url' => BASE_URL . '/files/download/' . $row['id'],
+            ];
+        }
+
+        return $files;
     }
 
     public static function commonMedia(): array
@@ -147,10 +340,22 @@ class DmsConversation extends Model
         $user = Session::user();
         $memberId = $user['workspace_member_id'] ?? 0;
         $workspaceId = $user['workspace_id'] ?? 0;
-        $db = self::db();
 
-        // Find the conversation ID between current user and other user
-        $stmt = $db->prepare("
+        $conversationId = self::resolveConversationId($otherUsername, $workspaceId, $memberId);
+        if ($conversationId === 0) {
+            return [];
+        }
+
+        return self::fetchMessagesForConversation($conversationId, $memberId, null, self::INITIAL_LOAD);
+    }
+
+    public static function resolveConversationId(string $otherUsername, int $workspaceId, int $memberId): int
+    {
+        if ($workspaceId === 0 || $memberId === 0 || $otherUsername === '') {
+            return 0;
+        }
+
+        $stmt = self::db()->prepare("
             SELECT c.id 
             FROM conversations c
             JOIN conversation_participants cp1 ON c.id = cp1.conversation_id AND cp1.workspace_member_id = :member_id
@@ -165,58 +370,355 @@ class DmsConversation extends Model
         $stmt->execute([
             'member_id' => $memberId,
             'workspace_id' => $workspaceId,
-            'other_username' => $otherUsername
+            'other_username' => $otherUsername,
         ]);
-        $conversationId = (int) $stmt->fetchColumn();
 
-        if ($conversationId === 0) {
-            return []; // No conversation history yet
+        return (int)$stmt->fetchColumn();
+    }
+
+    public static function hasOlderMessages(int $conversationId, int $memberId, int $beforeMessageId): bool
+    {
+        if ($conversationId <= 0 || $memberId <= 0 || $beforeMessageId <= 0) {
+            return false;
         }
 
-        // Fetch messages for this conversation
+        $stmt = self::db()->prepare("
+            SELECT 1
+            FROM messages m
+            WHERE m.conversation_id = ?
+              AND m.id < ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM message_user_deletions mud
+                  WHERE mud.message_id = m.id AND mud.workspace_member_id = ?
+              )
+            LIMIT 1
+        ");
+        $stmt->execute([$conversationId, $beforeMessageId, $memberId]);
+
+        return (bool)$stmt->fetchColumn();
+    }
+
+    public static function hasNewerMessages(int $conversationId, int $memberId, int $afterMessageId): bool
+    {
+        if ($conversationId <= 0 || $memberId <= 0 || $afterMessageId <= 0) {
+            return false;
+        }
+
+        $stmt = self::db()->prepare("
+            SELECT 1
+            FROM messages m
+            WHERE m.conversation_id = ?
+              AND m.id > ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM message_user_deletions mud
+                  WHERE mud.message_id = m.id AND mud.workspace_member_id = ?
+              )
+            LIMIT 1
+        ");
+        $stmt->execute([$conversationId, $afterMessageId, $memberId]);
+
+        return (bool)$stmt->fetchColumn();
+    }
+
+    /** @return array{messages: array<int, array<string, mixed>>, has_more_before: bool, has_more_after: bool, oldest_message_id: int, newest_message_id: int, target_message_id: int} */
+    public static function contextPage(int $conversationId, int $memberId, int $messageId, int $limit = 30): array
+    {
+        $empty = [
+            'messages' => [],
+            'has_more_before' => false,
+            'has_more_after' => false,
+            'oldest_message_id' => 0,
+            'newest_message_id' => 0,
+            'target_message_id' => $messageId,
+        ];
+
+        $limit = max(10, min(50, $limit));
+        if ($conversationId <= 0 || $memberId <= 0 || $messageId <= 0) {
+            return $empty;
+        }
+
+        $stmt = self::db()->prepare('SELECT id FROM messages WHERE id = ? AND conversation_id = ? LIMIT 1');
+        $stmt->execute([$messageId, $conversationId]);
+        if (!$stmt->fetchColumn()) {
+            return $empty;
+        }
+
+        $beforeLimit = max(1, (int)ceil($limit / 2));
+        $afterLimit = max(0, (int)floor($limit / 2));
+
+        $beforeRows = self::fetchMessagesUpTo($conversationId, $memberId, $messageId, $beforeLimit);
+        $afterRows = $afterLimit > 0
+            ? self::fetchMessagesAfter($conversationId, $memberId, $messageId, $afterLimit)
+            : [];
+
+        $rows = array_merge(array_reverse($beforeRows), $afterRows);
+        $messages = self::applyReadReceipts(self::enrichMessageRows($rows, $memberId), $conversationId);
+
+        $oldestId = !empty($messages) ? (int)$messages[0]['id'] : $messageId;
+        $newestId = !empty($messages) ? (int)$messages[count($messages) - 1]['id'] : $messageId;
+
+        return [
+            'messages' => $messages,
+            'has_more_before' => self::hasOlderMessages($conversationId, $memberId, $oldestId),
+            'has_more_after' => self::hasNewerMessages($conversationId, $memberId, $newestId),
+            'oldest_message_id' => $oldestId,
+            'newest_message_id' => $newestId,
+            'target_message_id' => $messageId,
+        ];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function fetchMessagesUpTo(int $conversationId, int $memberId, int $upToMessageId, int $limit): array
+    {
+        $db = self::db();
         $stmt = $db->prepare("
+            SELECT
+                m.*,
+                (m.sender_id = :member_id) as is_me,
+                (mp.id IS NOT NULL) as is_pinned
+            FROM messages m
+            LEFT JOIN message_pins mp ON mp.message_id = m.id AND mp.conversation_id = m.conversation_id AND mp.pinned_by = :member_id
+            WHERE m.conversation_id = :conversation_id
+              AND m.id <= :up_to_id
+              AND NOT EXISTS (
+                  SELECT 1 FROM message_user_deletions mud
+                  WHERE mud.message_id = m.id
+                    AND mud.workspace_member_id = :member_id
+              )
+            ORDER BY m.id DESC
+            LIMIT :limit
+        ");
+        $stmt->bindValue(':conversation_id', $conversationId, PDO::PARAM_INT);
+        $stmt->bindValue(':member_id', $memberId, PDO::PARAM_INT);
+        $stmt->bindValue(':up_to_id', $upToMessageId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function fetchMessagesAfter(int $conversationId, int $memberId, int $afterMessageId, int $limit): array
+    {
+        $db = self::db();
+        $stmt = $db->prepare("
+            SELECT
+                m.*,
+                (m.sender_id = :member_id) as is_me,
+                (mp.id IS NOT NULL) as is_pinned
+            FROM messages m
+            LEFT JOIN message_pins mp ON mp.message_id = m.id AND mp.conversation_id = m.conversation_id AND mp.pinned_by = :member_id
+            WHERE m.conversation_id = :conversation_id
+              AND m.id > :after_id
+              AND NOT EXISTS (
+                  SELECT 1 FROM message_user_deletions mud
+                  WHERE mud.message_id = m.id
+                    AND mud.workspace_member_id = :member_id
+              )
+            ORDER BY m.id ASC
+            LIMIT :limit
+        ");
+        $stmt->bindValue(':conversation_id', $conversationId, PDO::PARAM_INT);
+        $stmt->bindValue(':member_id', $memberId, PDO::PARAM_INT);
+        $stmt->bindValue(':after_id', $afterMessageId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /** @return array{messages: array<int, array<string, mixed>>, has_more: bool, oldest_message_id: int} */
+    public static function historyPage(int $conversationId, int $memberId, int $beforeMessageId, int $limit = 30): array
+    {
+        $limit = max(1, min(50, $limit));
+        if ($conversationId <= 0 || $memberId <= 0 || $beforeMessageId <= 0) {
+            return ['messages' => [], 'has_more' => false, 'oldest_message_id' => 0];
+        }
+
+        $messages = self::fetchMessagesForConversation($conversationId, $memberId, $beforeMessageId, $limit);
+        $oldestId = !empty($messages) ? (int)end($messages)['id'] : $beforeMessageId;
+
+        return [
+            'messages' => $messages,
+            'has_more' => self::hasOlderMessages($conversationId, $memberId, $oldestId),
+            'oldest_message_id' => $oldestId,
+        ];
+    }
+
+    /** @return array{messages: array<int, array<string, mixed>>, has_more: bool, newest_message_id: int} */
+    public static function historyPageAfter(int $conversationId, int $memberId, int $afterMessageId, int $limit = 30): array
+    {
+        $limit = max(1, min(50, $limit));
+        if ($conversationId <= 0 || $memberId <= 0 || $afterMessageId <= 0) {
+            return ['messages' => [], 'has_more' => false, 'newest_message_id' => 0];
+        }
+
+        $rows = self::fetchMessagesAfter($conversationId, $memberId, $afterMessageId, $limit);
+        $messages = self::applyReadReceipts(self::enrichMessageRows($rows, $memberId), $conversationId);
+        $newestId = !empty($messages) ? (int)end($messages)['id'] : $afterMessageId;
+
+        return [
+            'messages' => $messages,
+            'has_more' => self::hasNewerMessages($conversationId, $memberId, $newestId),
+            'newest_message_id' => $newestId,
+        ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private static function fetchMessagesForConversation(
+        int $conversationId,
+        int $memberId,
+        ?int $beforeMessageId,
+        int $limit
+    ): array {
+        $db = self::db();
+        $sql = "
             SELECT 
                 m.*,
-                (m.sender_id = :member_id) as is_me
+                (m.sender_id = :member_id) as is_me,
+                (mp.id IS NOT NULL) as is_pinned
             FROM messages m
-            WHERE m.conversation_id = :conversation_id AND m.deleted_for_everyone_at IS NULL
-            ORDER BY m.id DESC
-            LIMIT 100
-        ");
-        $stmt->execute([
-            'conversation_id' => $conversationId,
-            'member_id' => $memberId
-        ]);
-        $rows = $stmt->fetchAll();
+            LEFT JOIN message_pins mp ON mp.message_id = m.id AND mp.conversation_id = m.conversation_id AND mp.pinned_by = :member_id
+            WHERE m.conversation_id = :conversation_id
+              AND NOT EXISTS (
+                  SELECT 1 FROM message_user_deletions mud
+                  WHERE mud.message_id = m.id
+                    AND mud.workspace_member_id = :member_id
+              )
+        ";
+
+        if ($beforeMessageId !== null && $beforeMessageId > 0) {
+            $sql .= ' AND m.id < :before_id';
+        }
+
+        $sql .= ' ORDER BY m.id DESC LIMIT :limit';
+
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':conversation_id', $conversationId, PDO::PARAM_INT);
+        $stmt->bindValue(':member_id', $memberId, PDO::PARAM_INT);
+        if ($beforeMessageId !== null && $beforeMessageId > 0) {
+            $stmt->bindValue(':before_id', $beforeMessageId, PDO::PARAM_INT);
+        }
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return self::applyReadReceipts(self::enrichMessageRows($rows, $memberId), $conversationId);
+    }
+
+    /** @param list<array<string, mixed>> $rows @return list<array<string, mixed>> */
+    private static function enrichMessageRows(array $rows, int $memberId): array
+    {
+        if ($rows === []) {
+            return [];
+        }
+
+        $messageIds = [];
+        $replyIds = [];
+        foreach ($rows as $row) {
+            $messageIds[] = (int)$row['id'];
+            if (!empty($row['reply_to_id'])) {
+                $replyIds[] = (int)$row['reply_to_id'];
+            }
+        }
+
+        $db = self::db();
+        $reactionsByMessage = MessageEnricher::batchReactions($db, $messageIds, $memberId);
+        $attachmentsByMessage = MessageEnricher::batchAttachments($db, $messageIds);
+        $replySnippets = MessageEnricher::batchReplySnippets($db, $replyIds);
 
         $messages = [];
         foreach ($rows as $row) {
-            $messages[] = [
-                'id' => $row['id'],
-                'side' => $row['is_me'] ? 'me' : 'them',
-                'text' => $row['body'],
-                'time' => self::formatMessageTime($row['created_at']),
-                'edited' => $row['edited_at'] !== null,
-                'reactions' => self::getMessageReactions($row['id'], $memberId),
-                'attachments' => self::getMessageAttachments($row['id']),
-                'reply_to_id' => $row['reply_to_id'],
-                'reply_snippet' => $row['reply_to_id'] ? self::getReplySnippet($row['reply_to_id']) : null,
-                'message_type' => $row['message_type'],
-                'is_forwarded' => !empty($row['forwarded_from_message_id']),
-            ];
+            $messages[] = self::formatMessageRow(
+                $row,
+                $memberId,
+                $reactionsByMessage,
+                $attachmentsByMessage,
+                $replySnippets
+            );
         }
 
-        return self::applyReadReceipts($messages, $conversationId);
+        return $messages;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param array<int, list<array<string, mixed>>> $reactionsByMessage
+     * @param array<int, list<array<string, mixed>>> $attachmentsByMessage
+     * @param array<int, string> $replySnippets
+     */
+    private static function formatMessageRow(
+        array $row,
+        int $memberId,
+        array $reactionsByMessage = [],
+        array $attachmentsByMessage = [],
+        array $replySnippets = []
+    ): array {
+        $deletedForEveryone = $row['deleted_for_everyone_at'] !== null;
+        $isVoice = ($row['message_type'] ?? '') === 'voice';
+        $messageId = (int)$row['id'];
+        $messageType = GiphyUrl::resolveMessageType(
+            (string)($row['message_type'] ?? 'text'),
+            (string)($row['body'] ?? '')
+        );
+
+        $reactions = [];
+        $attachments = [];
+        $replySnippet = null;
+
+        if (!$deletedForEveryone) {
+            if ($reactionsByMessage !== [] || $attachmentsByMessage !== [] || $replySnippets !== []) {
+                $reactions = $reactionsByMessage[$messageId] ?? [];
+                $attachments = $attachmentsByMessage[$messageId] ?? [];
+                if (!empty($row['reply_to_id'])) {
+                    $replySnippet = $replySnippets[(int)$row['reply_to_id']] ?? 'Message';
+                }
+            } else {
+                $reactions = self::getMessageReactions($messageId, $memberId);
+                $attachments = self::getMessageAttachments($messageId);
+                if (!empty($row['reply_to_id'])) {
+                    $replySnippet = self::getReplySnippet((int)$row['reply_to_id']);
+                }
+            }
+        }
+
+        return [
+            'id' => $messageId,
+            'side' => !empty($row['is_me']) ? 'me' : 'them',
+            'text' => ($deletedForEveryone || $isVoice) ? '' : $row['body'],
+            'body' => ($deletedForEveryone || $isVoice) ? '' : $row['body'],
+            'voice_duration_seconds' => (!$deletedForEveryone && $isVoice)
+                ? max(0, (int)trim((string)($row['body'] ?? '')))
+                : 0,
+            'time' => self::formatMessageTime($row['created_at']),
+            'time_label' => self::formatMessageTime($row['created_at']),
+            'created_at' => $row['created_at'],
+            'edited' => !$deletedForEveryone && $row['edited_at'] !== null,
+            'reactions' => $reactions,
+            'attachments' => $attachments,
+            'reply_to_id' => $deletedForEveryone ? null : $row['reply_to_id'],
+            'reply_snippet' => $replySnippet,
+            'message_type' => $messageType,
+            'is_forwarded' => !$deletedForEveryone && !empty($row['forwarded_from_message_id']),
+            'deleted_for_everyone' => $deletedForEveryone,
+            'is_pinned' => !$deletedForEveryone && !empty($row['is_pinned']),
+        ];
     }
 
     public static function getReplySnippet(int $replyToId): string
     {
-        $stmt = self::db()->prepare("SELECT body, message_type FROM messages WHERE id = ?");
+        $stmt = self::db()->prepare("SELECT body, message_type, deleted_for_everyone_at FROM messages WHERE id = ?");
         $stmt->execute([$replyToId]);
         $row = $stmt->fetch();
         if (!$row) return 'Message';
-        if ($row['message_type'] === 'file') return 'File';
-        if ($row['message_type'] === 'gif') return 'Photo';
+        if ($row['deleted_for_everyone_at'] !== null) return 'This message was deleted';
+        $messageType = GiphyUrl::resolveMessageType(
+            (string)($row['message_type'] ?? 'text'),
+            (string)($row['body'] ?? '')
+        );
+        if ($messageType === 'file') return 'File';
+        if ($messageType === 'gif') return 'Photo';
+        if ($messageType === 'voice') return 'Voice message';
         $text = self::bodyToPlainText($row['body'] ?? '', false);
         if (strlen($text) > 80) {
             $text = substr($text, 0, 80) . '…';
@@ -258,6 +760,58 @@ class DmsConversation extends Model
             return substr($text, 0, $maxLen) . '...';
         }
         return $text;
+    }
+
+    /** @return array{label: string, online: bool} */
+    private static function formatPresence(string $status, ?string $lastSeenAt): array
+    {
+        if ($status === 'online') {
+            return ['label' => 'Active now', 'online' => true];
+        }
+
+        if (!$lastSeenAt) {
+            return ['label' => 'Offline', 'online' => false];
+        }
+
+        $diff = time() - strtotime($lastSeenAt);
+        if ($diff < 60) {
+            return ['label' => 'Active just now', 'online' => false];
+        }
+        if ($diff < 3600) {
+            return ['label' => 'Active ' . (int)floor($diff / 60) . 'm ago', 'online' => false];
+        }
+        if ($diff < 86400) {
+            return ['label' => 'Active ' . (int)floor($diff / 3600) . 'h ago', 'online' => false];
+        }
+
+        return ['label' => 'Active ' . (int)floor($diff / 86400) . 'd ago', 'online' => false];
+    }
+
+    private static function formatFileSize(int $bytes): string
+    {
+        if ($bytes < 1024) {
+            return $bytes . ' B';
+        }
+        if ($bytes < 1048576) {
+            return number_format($bytes / 1024, 1) . ' KB';
+        }
+
+        return number_format($bytes / 1048576, 2) . ' MB';
+    }
+
+    /** @return array<string, mixed> */
+    private static function emptyContactProfile(): array
+    {
+        return [
+            'username' => '',
+            'name' => 'User',
+            'avatar' => DEFAULT_AVATAR_URL,
+            'handle' => '@user',
+            'bio' => 'No bio added yet.',
+            'job_title' => '',
+            'is_online' => false,
+            'presence_label' => 'Offline',
+        ];
     }
 
     public static function getMessageReactions(int $messageId, int $currentMemberId): array
@@ -412,6 +966,20 @@ class DmsConversation extends Model
             return (int)$conversationId;
         } catch (\Exception $e) {
             $db->rollBack();
+
+            // In case of a concurrent insert race condition, re-query to see if the conversation was created
+            $stmt = $db->prepare("
+                SELECT id FROM conversations 
+                WHERE workspace_id = ? AND type = 'dm' AND dm_hash = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$workspaceId, $dmHash]);
+            $conversationId = (int)$stmt->fetchColumn();
+
+            if ($conversationId > 0) {
+                return $conversationId;
+            }
+
             return 0;
         }
     }

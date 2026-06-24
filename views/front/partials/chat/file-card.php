@@ -1,43 +1,21 @@
 <?php
+/** @var array<string, mixed> $audio */
+use App\Helpers\FileTypeInfo;
 
 $file_name = $file_name ?? 'File';
 $file_size = $file_size ?? '';
-$extRaw = pathinfo($file_name, PATHINFO_EXTENSION);
-$extSlug = strtolower(preg_replace('/[^a-z0-9]/', '', $extRaw ?: 'file'));
-$extLabel = strtoupper($extRaw ?: 'FILE');
-$typeLabels = [
-    'txt' => 'Text Document',
-    'pdf' => 'PDF Document',
-    'doc' => 'Word Document',
-    'docx' => 'Word Document',
-    'xls' => 'Spreadsheet',
-    'xlsx' => 'Spreadsheet',
-    'csv' => 'Spreadsheet',
-    'zip' => 'Archive',
-    'rar' => 'Archive',
-    'png' => 'Image',
-    'jpg' => 'Image',
-    'jpeg' => 'Image',
-];
-$iconMap = [
-    'pdf' => 'file-text',
-    'txt' => 'file-text',
-    'doc' => 'file-text',
-    'docx' => 'file-text',
-    'xls' => 'file-spreadsheet',
-    'xlsx' => 'file-spreadsheet',
-    'csv' => 'file-spreadsheet',
-    'zip' => 'archive',
-    'rar' => 'archive',
-    'png' => 'image',
-    'jpg' => 'image',
-    'jpeg' => 'image',
-];
-$type_label = $typeLabels[$extSlug] ?? 'File';
-$lucide_icon = $iconMap[$extSlug] ?? 'file';
+$file_url = $file_url ?? '';
+$mime_type = $mime_type ?? '';
+
+$info = FileTypeInfo::get($file_name, $mime_type);
+$extSlug = $info['extSlug'];
+$extLabel = $info['extLabel'];
+$type_label = $info['typeLabel'];
+$lucide_icon = $info['lucideIcon'];
+$iconCategory = $info['iconCategory'];
 ?>
 <div class="dm-file-card">
-    <div class="dm-file-icon dm-file-icon--<?php echo htmlspecialchars($extSlug); ?>" aria-hidden="true">
+    <div class="dm-file-icon dm-file-icon--cat-<?php echo htmlspecialchars($iconCategory); ?> dm-file-icon--<?php echo htmlspecialchars($extSlug); ?>" aria-hidden="true">
         <i data-lucide="<?php echo htmlspecialchars($lucide_icon); ?>" size="18"></i>
         <span class="dm-file-ext"><?php echo htmlspecialchars($extLabel); ?></span>
     </div>
@@ -49,7 +27,13 @@ $lucide_icon = $iconMap[$extSlug] ?? 'file';
             <span class="dm-file-type"><?php echo htmlspecialchars($type_label); ?></span>
         </span>
     </div>
-    <button type="button" class="dm-file-download" aria-label="Download <?php echo htmlspecialchars($file_name); ?>">
-        <i data-lucide="download" size="16"></i>
-    </button>
+    <?php if (!empty($file_url)): ?>
+        <a href="<?php echo htmlspecialchars($file_url); ?>" class="dm-file-download" download="<?php echo htmlspecialchars($file_name); ?>" aria-label="Download <?php echo htmlspecialchars($file_name); ?>">
+            <i data-lucide="download" size="16"></i>
+        </a>
+    <?php else: ?>
+        <button type="button" class="dm-file-download" aria-label="Download <?php echo htmlspecialchars($file_name); ?>">
+            <i data-lucide="download" size="16"></i>
+        </button>
+    <?php endif; ?>
 </div>

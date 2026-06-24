@@ -1,0 +1,7 @@
+# Deny all direct HTTP access to uploaded files (served only via authenticated download route).
+Require all denied
+
+# Extra safety: never execute scripts from storage even if misconfigured.
+<FilesMatch "\.(php|phtml|php3|php4|php5|phar|pl|py|cgi|asp|aspx|jsp|sh|bash)$">
+    Require all denied
+</FilesMatch>

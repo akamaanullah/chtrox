@@ -11,15 +11,19 @@ class Database
 
     public static function connection(): PDO
     {
-        // If we have a connection, ping it to check it's still alive
-        // (important for long-running WebSocket server processes)
         if (self::$connection instanceof PDO) {
-            try {
-                self::$connection->query('SELECT 1');
+            // Only ping in CLI mode (important for long-running processes like WebSockets)
+            // to avoid adding unnecessary query latency to standard web requests.
+            if (PHP_SAPI === 'cli') {
+                try {
+                    self::$connection->query('SELECT 1');
+                    return self::$connection;
+                } catch (PDOException $e) {
+                    // Connection is stale - reconnect below
+                    self::$connection = null;
+                }
+            } else {
                 return self::$connection;
-            } catch (PDOException $e) {
-                // Connection is stale - reconnect below
-                self::$connection = null;
             }
         }
 

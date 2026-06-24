@@ -76,7 +76,7 @@ class AuthController extends Controller
                 );
             }
         }
-        Session::logout();
+        Session::destroy();
         $this->redirect('/login');
     }
 
@@ -219,11 +219,29 @@ class AuthController extends Controller
             $uploadDir = ROOT_DIR . '/public/uploads/logos';
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0755, true);
+                
+                // Write a protective .htaccess file in the parent uploads directory
+                $htaccessPath = ROOT_DIR . '/public/uploads/.htaccess';
+                if (!is_file($htaccessPath)) {
+                    $htaccessContent = "# Extra safety: deny script execution in public uploads\n" .
+                                      "<FilesMatch \"\\.(php|phtml|php3|php4|php5|phar|pl|py|cgi|asp|aspx|jsp|sh|bash)$\">\n" .
+                                      "    Require all denied\n" .
+                                      "</FilesMatch>\n";
+                    @file_put_contents($htaccessPath, $htaccessContent);
+                }
             }
+            $tmpFile = $_FILES['company_logo']['tmp_name'];
             $ext = strtolower(pathinfo($_FILES['company_logo']['name'], PATHINFO_EXTENSION));
-            if (in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'svg'])) {
+            
+            // Validate extension and detected MIME type (strictly block SVG for XSS safety)
+            $allowedExtensions = ['png', 'jpg', 'jpeg', 'gif'];
+            $allowedMimes = ['image/png', 'image/jpeg', 'image/gif'];
+            
+            $detectedMime = \App\Helpers\FileUploadPolicy::detectMime($tmpFile);
+            
+            if (in_array($ext, $allowedExtensions, true) && in_array($detectedMime, $allowedMimes, true)) {
                 $filename = uniqid('logo_', true) . '.' . $ext;
-                if (move_uploaded_file($_FILES['company_logo']['tmp_name'], $uploadDir . '/' . $filename)) {
+                if (move_uploaded_file($tmpFile, $uploadDir . '/' . $filename)) {
                     $logoPath = 'uploads/logos/' . $filename;
                 }
             }
@@ -414,8 +432,11 @@ class AuthController extends Controller
 
         } catch (\Exception $e) {
             $db->rollBack();
+            $errorMessage = APP_DEBUG 
+                ? 'Registration failed: ' . $e->getMessage() 
+                : 'Registration failed. Please verify your inputs and try again.';
             $this->renderAuth('register', 'Register Account', [
-                'error' => 'Registration failed: ' . $e->getMessage(),
+                'error' => $errorMessage,
             ]);
         }
     }

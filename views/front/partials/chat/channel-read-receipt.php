@@ -7,6 +7,13 @@ $notRead = $channel_read['not_read'] ?? [];
 $avatarLimit = 2;
 $readersJson = htmlspecialchars(json_encode($readBy), ENT_QUOTES, 'UTF-8');
 $notReadJson = htmlspecialchars(json_encode($notRead), ENT_QUOTES, 'UTF-8');
+
+$labelText = "Seen by {$readCount}";
+if ($readCount === 0) {
+    $labelText = "Sent";
+} elseif ($readCount === $memberCount && $memberCount > 0) {
+    $labelText = "Seen by all";
+}
 ?>
 <button type="button"
     class="ch-read-receipt js-channel-seen-by"
@@ -14,8 +21,8 @@ $notReadJson = htmlspecialchars(json_encode($notRead), ENT_QUOTES, 'UTF-8');
     data-not-read="<?php echo $notReadJson; ?>"
     data-read-count="<?php echo $readCount; ?>"
     data-member-count="<?php echo $memberCount; ?>"
-    aria-label="Seen by <?php echo $readCount; ?> members">
-    <span class="ch-read-receipt-label">Seen by <?php echo $readCount; ?></span>
+    aria-label="<?php echo htmlspecialchars($labelText); ?>">
+    <span class="ch-read-receipt-label"><?php echo htmlspecialchars($labelText); ?></span>
     <?php if (!empty($readBy)): ?>
         <span class="ch-read-receipt-avatars" aria-hidden="true">
             <?php foreach (array_slice($readBy, 0, $avatarLimit) as $reader): ?>

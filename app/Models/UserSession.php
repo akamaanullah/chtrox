@@ -15,7 +15,21 @@ class UserSession extends Model
             VALUES (:user_id, :session_token, :device_name, :ip_address, :user_agent)
         ');
         $deviceName = self::getDeviceName();
-        $ip = $_SERVER['REMOTE_ADDR'] ?? null;
+        $ip = null;
+        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $ips = array_map('trim', explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']));
+            foreach ($ips as $candidate) {
+                if (filter_var($candidate, FILTER_VALIDATE_IP)) {
+                    $ip = $candidate;
+                    break;
+                }
+            }
+        }
+        if ($ip === null && !empty($_SERVER['REMOTE_ADDR'])) {
+            if (filter_var($_SERVER['REMOTE_ADDR'], FILTER_VALIDATE_IP)) {
+                $ip = $_SERVER['REMOTE_ADDR'];
+            }
+        }
         $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
 
         $stmt->execute([

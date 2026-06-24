@@ -25,7 +25,7 @@
 
     <div class="all-channels-list" id="allChannelsList">
         <?php foreach ($browse_channels as $channel): ?>
-            <div class="channel-row <?php echo $channel['joined'] ? 'joined' : ''; ?>">
+            <div class="channel-row <?php echo $channel['joined'] ? 'joined' : ''; ?>" data-channel-id="<?php echo $channel['id']; ?>">
                 <div class="channel-row-icon">
                     <i data-lucide="<?php echo htmlspecialchars($channel['icon']); ?>" size="20"
                         style="color: var(--indigo-600);"></i>
@@ -36,8 +36,10 @@
                 </div>
                 <?php if ($channel['joined']): ?>
                     <span class="btn-joined">Joined</span>
+                <?php elseif (!empty($channel['request_pending'])): ?>
+                    <span class="btn-joined">Requested</span>
                 <?php else: ?>
-                    <button class="btn-join">Join</button>
+                    <button type="button" class="btn-join"><?php echo $channel['visibility'] === 'private' ? 'Request' : 'Join'; ?></button>
                 <?php endif; ?>
             </div>
         <?php endforeach; ?>

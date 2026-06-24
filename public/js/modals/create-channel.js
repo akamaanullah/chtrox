@@ -4,7 +4,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (createChannelModal) {
         function openCreateChannelModal() {
             createChannelModal.classList.add('active');
-            lucide.createIcons({ nodes: [createChannelModal] });
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons({ nodes: [createChannelModal] });
+            }
             updateCreateChannelSubmitState();
         }
         var ccChannelName = document.getElementById('ccChannelName');
@@ -21,27 +23,44 @@ document.addEventListener('DOMContentLoaded', () => {
             createChannelModal.classList.remove('active');
         }
 
-        document.querySelectorAll('.js-open-create-channel-modal').forEach(function (el) {
-            el.addEventListener('click', openCreateChannelModal);
-            el.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    openCreateChannelModal();
-                }
-            });
-        });
-        createChannelModal.querySelectorAll('.js-close-create-channel-modal').forEach(function (btn) {
-            btn.addEventListener('click', closeCreateChannelModal);
-        });
-        createChannelModal.addEventListener('click', function (e) {
-            if (e.target === createChannelModal) closeCreateChannelModal();
+        // Use event delegation on document for opening to cover dynamically swapped SPA buttons
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('.js-open-create-channel-modal');
+            if (btn) {
+                e.preventDefault();
+                openCreateChannelModal();
+            }
         });
 
-        const form = document.getElementById('createChannelForm');
-        if (form) {
-            form.addEventListener('submit', function (e) {
+        document.addEventListener('keydown', function (e) {
+            var btn = e.target.closest('.js-open-create-channel-modal');
+            if (btn && (e.key === 'Enter' || e.key === ' ')) {
                 e.preventDefault();
+                openCreateChannelModal();
+            }
+        });
+
+        // Use event delegation on modal for closing
+        createChannelModal.addEventListener('click', function (e) {
+            if (e.target === createChannelModal || e.target.closest('.js-close-create-channel-modal')) {
                 closeCreateChannelModal();
+            }
+        });
+
+        // Search filtering for members list
+        var searchPeople = document.getElementById('searchPeople');
+        if (searchPeople) {
+            searchPeople.addEventListener('input', function () {
+                var query = this.value.toLowerCase().trim();
+                var rows = createChannelModal.querySelectorAll('.cc-member-row');
+                rows.forEach(function (row) {
+                    var name = row.getAttribute('data-member-name') || '';
+                    if (!query || name.indexOf(query) !== -1) {
+                        row.style.display = 'flex';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
             });
         }
 
@@ -77,6 +96,82 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             addAllMembers.addEventListener('change', toggleSpecificPeople);
             toggleSpecificPeople();
+        }
+
+        const form = document.getElementById('createChannelForm');
+        if (form) {
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                if (!ccSubmitBtn || !ccChannelName) return;
+
+                ccSubmitBtn.disabled = true;
+
+                var visibilityRadio = createChannelModal.querySelector('input[name="visibility"]:checked');
+                var addAllCheckbox = document.getElementById('addAllMembers');
+                
+                var name = ccChannelName.value.trim();
+                var visibility = visibilityRadio ? visibilityRadio.value : 'public';
+                var addAll = addAllCheckbox ? addAllCheckbox.checked : false;
+
+                var checkedMembers = [];
+                createChannelModal.querySelectorAll('.cc-member-check:checked').forEach(function (chk) {
+                    var val = parseInt(chk.value, 10);
+                    if (val && checkedMembers.indexOf(val) === -1) {
+                        checkedMembers.push(val);
+                    }
+                });
+
+                var payload = {
+                    name: name,
+                    description: '',
+                    visibility: visibility,
+                    add_all_members: addAll,
+                    members: checkedMembers
+                };
+
+                fetch(window.CHATROX.baseUrl + '/api/channels/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify(payload)
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.error) {
+                        window.ChatRoxDialog.alert(data.error, 'Error');
+                        ccSubmitBtn.disabled = false;
+                    } else if (data.success && data.channel) {
+                        closeCreateChannelModal();
+                        
+                        // Reset form
+                        ccChannelName.value = '';
+                        if (searchPeople) searchPeople.value = '';
+                        
+                        if (addAllCheckbox) {
+                            addAllCheckbox.checked = false;
+                            toggleSpecificPeople();
+                        }
+                        createChannelModal.querySelectorAll('.cc-member-check').forEach(function(chk) {
+                            chk.checked = false;
+                        });
+                        updateSelectedCount();
+
+                        // Navigate to new channel
+                        if (window.ChatRoxRouter && typeof window.ChatRoxRouter.navigate === 'function') {
+                            window.ChatRoxRouter.navigate('channels/' + data.channel.slug, { force: true });
+                        } else {
+                            window.location.href = window.CHATROX.baseUrl + '/channels/' + data.channel.slug;
+                        }
+                    }
+                })
+                .catch(function (err) {
+                    console.error('Failed to create channel:', err);
+                    window.ChatRoxDialog.alert('An unexpected error occurred. Please try again.', 'Error');
+                    ccSubmitBtn.disabled = false;
+                });
+            });
         }
     }
 });

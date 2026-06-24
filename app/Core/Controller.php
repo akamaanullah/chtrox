@@ -41,4 +41,19 @@ class Controller
             'auth_title' => $title,
         ], $data));
     }
+
+    protected function getRequestInput(int $maxBytes = 2097152): array
+    {
+        $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+        if ($contentLength > $maxBytes) {
+            $this->jsonResponse(['error' => 'Request body too large'], 413);
+        }
+
+        $raw = file_get_contents('php://input', false, null, 0, $maxBytes + 1);
+        if (strlen($raw) > $maxBytes) {
+            $this->jsonResponse(['error' => 'Request body too large'], 413);
+        }
+
+        return json_decode($raw, true) ?? $_POST ?? [];
+    }
 }

@@ -21,123 +21,181 @@ class HomeDashboard extends Model
         ];
     }
 
-    public static function stats(): array
+    /** @return array{online: int, total: int} */
+    public static function onlineMemberCounts(): array
     {
         $user = Session::user();
-        $memberId = $user['workspace_member_id'] ?? 0;
-        $workspaceId = $user['workspace_id'] ?? 0;
-        $db = self::db();
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
 
-        $unreadCount = 0;
-        $onlineCount = 0;
-        $totalMembersCount = 0;
-
-        if ($memberId > 0 && $workspaceId > 0) {
-            // Count unread messages across channels and DMs
-            $unreadStmt = $db->prepare("
-                SELECT COUNT(*) 
-                FROM messages m
-                JOIN conversations c ON m.conversation_id = c.id
-                LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
-                WHERE m.workspace_id = :workspace_id
-                  AND m.sender_id != :member_id
-                  AND m.deleted_for_everyone_at IS NULL
-                  AND (
-                      (c.type IN ('dm', 'group_dm') AND EXISTS (
-                          SELECT 1 FROM conversation_participants cp 
-                          WHERE cp.conversation_id = c.id AND cp.workspace_member_id = :member_id AND cp.left_at IS NULL
-                      ))
-                      OR
-                      (c.type = 'channel' AND EXISTS (
-                          SELECT 1 FROM channel_members cm 
-                          WHERE cm.channel_id = c.channel_id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
-                      ))
-                  )
-                  AND (crc.last_read_message_id IS NULL OR m.id > crc.last_read_message_id)
-            ");
-            $unreadStmt->execute([
-                'member_id' => $memberId,
-                'workspace_id' => $workspaceId
-            ]);
-            $unreadCount = (int) $unreadStmt->fetchColumn();
-
-            // Count online workspace members and total active members
-            $presenceStmt = $db->prepare("
-                SELECT 
-                    SUM(CASE WHEN up.status = 'online' THEN 1 ELSE 0 END) as online_count,
-                    COUNT(*) as total_count
-                FROM workspace_members wm
-                JOIN user_presence up ON wm.user_id = up.user_id
-                WHERE wm.workspace_id = :workspace_id 
-                  AND wm.status = 'active'
-            ");
-            $presenceStmt->execute(['workspace_id' => $workspaceId]);
-            $counts = $presenceStmt->fetch();
-            $onlineCount = (int) ($counts['online_count'] ?? 0);
-            $totalMembersCount = (int) ($counts['total_count'] ?? 0);
+        if ($workspaceId === 0) {
+            return ['online' => 0, 'total' => 0];
         }
+
+        $stmt = self::db()->prepare("
+            SELECT
+                SUM(CASE WHEN up.status = 'online' THEN 1 ELSE 0 END) as online_count,
+                COUNT(*) as total_count
+            FROM workspace_members wm
+            JOIN user_presence up ON wm.user_id = up.user_id
+            WHERE wm.workspace_id = ?
+              AND wm.status = 'active'
+        ");
+        $stmt->execute([$workspaceId]);
+        $counts = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'online' => (int)($counts['online_count'] ?? 0),
+            'total' => (int)($counts['total_count'] ?? 0),
+        ];
+    }
+
+    public static function unreadMessageCount(): int
+    {
+        $user = Session::user();
+        $memberId = (int)($user['workspace_member_id'] ?? 0);
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
+
+        if ($memberId === 0 || $workspaceId === 0) {
+            return 0;
+        }
+
+        $stmt = self::db()->prepare("
+            SELECT COUNT(*)
+            FROM messages m
+            JOIN conversations c ON m.conversation_id = c.id
+            LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
+            WHERE m.workspace_id = :workspace_id
+              AND m.sender_id != :member_id
+              AND m.deleted_for_everyone_at IS NULL
+              AND (
+                  (c.type IN ('dm', 'group_dm') AND EXISTS (
+                      SELECT 1 FROM conversation_participants cp
+                      WHERE cp.conversation_id = c.id AND cp.workspace_member_id = :member_id AND cp.left_at IS NULL
+                  ))
+                  OR
+                  (c.type = 'channel' AND EXISTS (
+                      SELECT 1 FROM channel_members cm
+                      WHERE cm.channel_id = c.channel_id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
+                  ))
+              )
+              AND (crc.last_read_message_id IS NULL OR m.id > crc.last_read_message_id)
+        ");
+        $stmt->execute([
+            'member_id' => $memberId,
+            'workspace_id' => $workspaceId,
+        ]);
+
+        return (int)$stmt->fetchColumn();
+    }
+
+    /** @return array<string, mixed> */
+    public static function liveSummary(): array
+    {
+        $online = self::onlineMemberCounts();
+
+        return [
+            'unread_count' => self::unreadMessageCount(),
+            'online_count' => $online['online'],
+            'total_members' => $online['total'],
+            'inbox' => self::chatInboxCard(),
+            'sidebar_dms' => self::sidebarDmPreview(),
+            'sidebar_channels' => self::sidebarChannelPreview(),
+            'sidebar_activity' => self::sidebarRecentActivity(),
+            'announcements' => self::announcements(),
+            'date_label' => self::greeting()['date_label'],
+            'nav_badges' => Navigation::navBadgeCounts(),
+        ];
+    }
+
+    public static function stats(): array
+    {
+        $unreadCount = self::unreadMessageCount();
+        $onlineCounts = self::onlineMemberCounts();
+        $onlineCount = $onlineCounts['online'];
+        $totalMembersCount = $onlineCounts['total'];
 
         return [
             [
-                'label' => 'Unread', 
-                'value' => (string) $unreadCount, 
+                'label' => 'Unread',
+                'value' => (string) $unreadCount,
                 'value_id' => 'homeUnreadCount',
-                'footer' => 'Messages', 
-                'variant' => 'green', 
+                'footer' => 'Messages',
+                'variant' => 'green',
                 'overlay_icon' => 'message-square'
             ],
             [
-                'label' => 'Online', 
-                'value' => (string) $onlineCount, 
-                'footer' => 'of ' . $totalMembersCount . ' members', 
-                'variant' => 'default', 
-                'footer_class' => 'text-primary', 
+                'label' => 'Online',
+                'value' => (string) $onlineCount,
+                'value_id' => 'homeOnlineCount',
+                'footer' => 'of ' . $totalMembersCount . ' members',
+                'footer_id' => 'homeOnlineFooter',
+                'variant' => 'default',
+                'footer_class' => 'text-primary',
                 'overlay_icon' => 'users'
             ],
             [
-                'label' => 'Focus Time', 
-                'value' => '0:00', 
-                'variant' => 'dark', 
-                'is_timer' => true, 
+                'label' => 'Focus Time',
+                'value' => '0:00',
+                'variant' => 'dark',
+                'is_timer' => true,
                 'overlay_icon' => 'timer'
             ],
         ];
     }
 
+    /** @return array<int, array<string, mixed>> */
     public static function searchTags(): array
     {
         $user = Session::user();
-        $workspaceId = $user['workspace_id'] ?? 0;
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
+        $memberId = (int)($user['workspace_member_id'] ?? 0);
 
         $tags = [];
         if ($workspaceId > 0) {
             $stmt = self::db()->prepare("
-                SELECT name FROM channels 
-                WHERE workspace_id = ? AND visibility = 'public' AND status = 'active' 
-                ORDER BY name ASC LIMIT 4
+                SELECT c.name, c.slug,
+                       EXISTS (
+                           SELECT 1 FROM channel_members cm
+                           WHERE cm.channel_id = c.id
+                             AND cm.workspace_member_id = ?
+                             AND cm.left_at IS NULL
+                       ) AS joined
+                FROM channels c
+                WHERE c.workspace_id = ? AND c.visibility = 'public' AND c.status = 'active'
+                ORDER BY c.name ASC LIMIT 4
             ");
-            $stmt->execute([$workspaceId]);
-            $channels = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-            foreach ($channels as $channelName) {
-                $tags[] = '#' . $channelName;
+            $stmt->execute([$memberId, $workspaceId]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $tags[] = [
+                    'label' => '#' . $row['name'],
+                    'type' => 'channel',
+                    'query' => $row['name'],
+                    'slug' => $row['slug'],
+                    'joined' => !empty($row['joined']),
+                ];
             }
         }
 
-        // Pad with member usernames if fewer than 4 channel tags
         if (count($tags) < 4 && $workspaceId > 0) {
-            $memberId = (int)($user['workspace_member_id'] ?? 0);
             $stmt = self::db()->prepare("
-                SELECT u.username
+                SELECT u.username, u.first_name, u.last_name
                 FROM workspace_members wm
                 JOIN users u ON u.id = wm.user_id
                 WHERE wm.workspace_id = ? AND wm.status = 'active' AND wm.id != ?
                 ORDER BY u.first_name ASC
                 LIMIT ?
             ");
-            $stmt->execute([$workspaceId, $memberId, 4 - count($tags)]);
-            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $username) {
-                $tags[] = '@' . $username;
+            $stmt->bindValue(1, $workspaceId, PDO::PARAM_INT);
+            $stmt->bindValue(2, $memberId, PDO::PARAM_INT);
+            $stmt->bindValue(3, 4 - count($tags), PDO::PARAM_INT);
+            $stmt->execute();
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $tags[] = [
+                    'label' => '@' . $row['username'],
+                    'type' => 'person',
+                    'query' => $row['username'],
+                    'username' => $row['username'],
+                ];
             }
         }
 
@@ -188,11 +246,15 @@ class HomeDashboard extends Model
                 break;
             }
             $presence = self::presenceForUsername($row['id'], $workspaceId);
+            $messagePreview = trim((string)($row['preview'] ?? ''));
             $items[] = [
                 'id' => $row['id'],
                 'name' => $row['name'],
                 'avatar' => $row['avatar'],
-                'preview' => $presence['label'],
+                'preview' => ($messagePreview !== '' && $messagePreview !== 'No messages yet')
+                    ? $messagePreview
+                    : $presence['label'],
+                'presence_label' => $presence['label'],
                 'is_online' => $presence['online'],
             ];
             $seen[$row['id']] = true;
@@ -555,40 +617,52 @@ class HomeDashboard extends Model
     public static function announcements(): array
     {
         $user = Session::user();
-        $workspaceId = $user['workspace_id'] ?? 0;
-        
-        $announcements = [];
-        if ($workspaceId > 0) {
-            $stmt = self::db()->prepare("
-                SELECT * FROM announcements 
-                WHERE workspace_id = ? 
-                  AND NOW() BETWEEN start_date AND end_date
-                ORDER BY created_at DESC 
-                LIMIT 3
-            ");
-            $stmt->execute([$workspaceId]);
-            $rows = $stmt->fetchAll();
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
 
-            $iconMap = [
-                'IMPORTANT' => '🚨',
-                'CELEBRATION' => '🎂',
-                'UPDATE' => '📢'
-            ];
-
-            foreach ($rows as $row) {
-                $tag = $row['tag'];
-                $announcements[] = [
-                    'icon' => $iconMap[$tag] ?? '📢',
-                    'tag' => $tag,
-                    'tag_class' => strtolower($tag),
-                    'title' => $row['title'],
-                    'body' => $row['message'],
-                    'date' => date('d/m/Y', strtotime($row['created_at'])),
-                ];
-            }
+        if ($workspaceId === 0) {
+            return [];
         }
 
-        // Return empty or seeder rows
+        $stmt = self::db()->prepare("
+            SELECT a.*, CONCAT(u.first_name, ' ', u.last_name) AS author_name
+            FROM announcements a
+            JOIN workspace_members wm ON wm.id = a.created_by
+            JOIN users u ON u.id = wm.user_id
+            WHERE a.workspace_id = ?
+              AND NOW() BETWEEN a.start_date AND a.end_date
+            ORDER BY a.created_at DESC
+            LIMIT 3
+        ");
+        $stmt->execute([$workspaceId]);
+
+        $announcements = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $announcements[] = self::formatAnnouncementRow($row);
+        }
+
         return $announcements;
+    }
+
+    /** @param array<string, mixed> $row */
+    private static function formatAnnouncementRow(array $row): array
+    {
+        $tag = (string)($row['tag'] ?? 'UPDATE');
+        $iconMap = [
+            'IMPORTANT' => '🚨',
+            'CELEBRATION' => '🎂',
+            'UPDATE' => '📢',
+        ];
+
+        return [
+            'id' => (int)$row['id'],
+            'icon' => $iconMap[$tag] ?? '📢',
+            'tag' => $tag,
+            'tag_class' => strtolower($tag),
+            'title' => $row['title'],
+            'body' => $row['message'],
+            'date' => date('d/m/Y', strtotime($row['created_at'])),
+            'posted_by' => $row['author_name'] ?? 'Workspace Admin',
+            'posted_at' => date('M j, Y', strtotime($row['created_at'])),
+        ];
     }
 }

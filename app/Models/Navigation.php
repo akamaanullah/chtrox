@@ -12,66 +12,13 @@ class Navigation extends Model
         $user = Session::user();
         $memberId = $user['workspace_member_id'] ?? 0;
         $workspaceId = $user['workspace_id'] ?? 0;
-        $db = self::db();
 
-        $dmUnread = 0;
-        $channelUnread = 0;
-        $activityUnread = 0;
-
-        if ($memberId > 0 && $workspaceId > 0) {
-            // Count DM unread messages
-            $dmStmt = $db->prepare("
-                SELECT COUNT(*) 
-                FROM messages m
-                JOIN conversations c ON m.conversation_id = c.id
-                LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
-                WHERE m.workspace_id = :workspace_id
-                  AND m.sender_id != :member_id
-                  AND m.deleted_for_everyone_at IS NULL
-                  AND c.type IN ('dm', 'group_dm')
-                  AND EXISTS (
-                      SELECT 1 FROM conversation_participants cp 
-                      WHERE cp.conversation_id = c.id AND cp.workspace_member_id = :member_id AND cp.left_at IS NULL
-                  )
-                  AND (crc.last_read_message_id IS NULL OR m.id > crc.last_read_message_id)
-            ");
-            $dmStmt->execute([
-                'member_id' => $memberId,
-                'workspace_id' => $workspaceId
-            ]);
-            $dmUnread = (int) $dmStmt->fetchColumn();
-
-            // Count Channel unread messages
-            $channelStmt = $db->prepare("
-                SELECT COUNT(*) 
-                FROM messages m
-                JOIN conversations c ON m.conversation_id = c.id
-                LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
-                WHERE m.workspace_id = :workspace_id
-                  AND m.sender_id != :member_id
-                  AND m.deleted_for_everyone_at IS NULL
-                  AND c.type = 'channel'
-                  AND EXISTS (
-                      SELECT 1 FROM channel_members cm 
-                      WHERE cm.channel_id = c.channel_id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
-                  )
-                  AND (crc.last_read_message_id IS NULL OR m.id > crc.last_read_message_id)
-            ");
-            $channelStmt->execute([
-                'member_id' => $memberId,
-                'workspace_id' => $workspaceId
-            ]);
-            $channelUnread = (int) $channelStmt->fetchColumn();
-
-            // Count unread notifications for Activity tab
-            $activityStmt = $db->prepare("
-                SELECT COUNT(*) 
-                FROM notifications 
-                WHERE recipient_id = ? AND read_at IS NULL AND workspace_id = ?
-            ");
-            $activityStmt->execute([$memberId, $workspaceId]);
-            $activityUnread = (int) $activityStmt->fetchColumn();
-        }
+        $badgeCounts = ($memberId > 0 && $workspaceId > 0)
+            ? self::navBadgeCounts()
+            : ['dms' => 0, 'channels' => 0, 'activity' => 0];
+        $dmUnread = $badgeCounts['dms'];
+        $channelUnread = $badgeCounts['channels'];
+        $activityUnread = $badgeCounts['activity'];
 
         $tabs = [
             ['id' => 'home', 'icon' => 'home', 'label' => 'Home'],
@@ -94,5 +41,73 @@ class Navigation extends Model
         }
 
         return $tabs;
+    }
+
+    /** @return array{dms: int, channels: int, activity: int} */
+    public static function navBadgeCounts(): array
+    {
+        $user = Session::user();
+        $memberId = (int)($user['workspace_member_id'] ?? 0);
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
+
+        $counts = ['dms' => 0, 'channels' => 0, 'activity' => 0];
+
+        if ($memberId === 0 || $workspaceId === 0) {
+            return $counts;
+        }
+
+        $db = self::db();
+
+        $dmStmt = $db->prepare("
+            SELECT COUNT(*)
+            FROM messages m
+            JOIN conversations c ON m.conversation_id = c.id
+            LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
+            WHERE m.workspace_id = :workspace_id
+              AND m.sender_id != :member_id
+              AND m.deleted_for_everyone_at IS NULL
+              AND c.type IN ('dm', 'group_dm')
+              AND EXISTS (
+                  SELECT 1 FROM conversation_participants cp
+                  WHERE cp.conversation_id = c.id AND cp.workspace_member_id = :member_id AND cp.left_at IS NULL
+              )
+              AND (crc.last_read_message_id IS NULL OR m.id > crc.last_read_message_id)
+        ");
+        $dmStmt->execute([
+            'member_id' => $memberId,
+            'workspace_id' => $workspaceId,
+        ]);
+        $counts['dms'] = (int)$dmStmt->fetchColumn();
+
+        $channelStmt = $db->prepare("
+            SELECT COUNT(*)
+            FROM messages m
+            JOIN conversations c ON m.conversation_id = c.id
+            LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
+            WHERE m.workspace_id = :workspace_id
+              AND m.sender_id != :member_id
+              AND m.deleted_for_everyone_at IS NULL
+              AND c.type = 'channel'
+              AND EXISTS (
+                  SELECT 1 FROM channel_members cm
+                  WHERE cm.channel_id = c.channel_id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
+              )
+              AND (crc.last_read_message_id IS NULL OR m.id > crc.last_read_message_id)
+        ");
+        $channelStmt->execute([
+            'member_id' => $memberId,
+            'workspace_id' => $workspaceId,
+        ]);
+        $counts['channels'] = (int)$channelStmt->fetchColumn();
+
+        $activityStmt = $db->prepare("
+            SELECT COUNT(*)
+            FROM notifications
+            WHERE recipient_id = ? AND read_at IS NULL AND workspace_id = ?
+        ");
+        $activityStmt->execute([$memberId, $workspaceId]);
+        $counts['activity'] = (int)$activityStmt->fetchColumn();
+
+        return $counts;
     }
 }
