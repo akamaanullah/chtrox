@@ -485,12 +485,14 @@ try {
         $editedAt = (int)$msg['is_edited'] === 1 ? $msg['updated_at'] : null;
         $deletedAt = (int)$msg['is_deleted'] === 1 ? $msg['updated_at'] : null;
 
+        $body = mb_substr($msg['message'] ?? '', 0, 65000, 'UTF-8');
+
         $stmtInsertMsg->execute([
             ':workspace_id' => $wsId,
             ':conversation_id' => $convoId,
             ':sender_id' => $senderMemberId,
             ':reply_to_id' => null, // Will update in second pass
-            ':body' => $msg['message'] ?? '',
+            ':body' => $body,
             ':message_type' => $messageType,
             ':edited_at' => $editedAt,
             ':deleted_for_everyone_at' => $deletedAt,
