@@ -671,9 +671,131 @@ try {
     echo "  - Migrated " . count($resets) . " password reset tokens.\n";
 
     // -------------------------------------------------------------------------
-    // STEP 9: Refreshing Channel Member Counts
+    // STEP 9: Ensuring Default Channels (general and announcements) Exist
     // -------------------------------------------------------------------------
-    echo "[STEP 9] Refreshing Channel Member Counts...\n";
+    echo "[STEP 9] Ensuring Default Channels (general and announcements) Exist...\n";
+
+    $workspacesList = $tgtPdo->query("SELECT id FROM workspaces")->fetchAll();
+
+    $stmtCheckChan = $tgtPdo->prepare("SELECT id FROM channels WHERE workspace_id = ? AND slug = ? LIMIT 1");
+    
+    $stmtCreateChan = $tgtPdo->prepare("
+        INSERT INTO channels (workspace_id, slug, former_slugs, name, description, visibility, status, is_default, created_by, member_count, created_at, updated_at)
+        VALUES (:workspace_id, :slug, NULL, :name, :description, 'public', 'active', 1, :created_by, 0, NOW(), NOW())
+    ");
+
+    $stmtCreateConvo = $tgtPdo->prepare("
+        INSERT INTO conversations (workspace_id, type, channel_id, dm_hash, last_message_id, last_message_at, created_at)
+        VALUES (:workspace_id, 'channel', :channel_id, NULL, NULL, NULL, NOW())
+    ");
+
+    $stmtCheckMember = $tgtPdo->prepare("SELECT 1 FROM channel_members WHERE channel_id = ? AND workspace_member_id = ? LIMIT 1");
+
+    $stmtAddChanMember = $tgtPdo->prepare("
+        INSERT INTO channel_members (channel_id, workspace_member_id, role, notifications_muted, joined_at)
+        VALUES (:channel_id, :workspace_member_id, 'member', 0, NOW())
+    ");
+
+    $stmtCheckConvoPart = $tgtPdo->prepare("SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND workspace_member_id = ? LIMIT 1");
+
+    $stmtAddConvoPart = $tgtPdo->prepare("
+        INSERT INTO conversation_participants (conversation_id, workspace_member_id, joined_at)
+        VALUES (:conversation_id, :workspace_member_id, NOW())
+    ");
+
+    foreach ($workspacesList as $ws) {
+        $wsId = (int)$ws['id'];
+
+        // Get all active members in this workspace
+        $stmtAllMembers = $tgtPdo->prepare("SELECT id FROM workspace_members WHERE workspace_id = ? AND status = 'active'");
+        $stmtAllMembers->execute([$wsId]);
+        $wsMembers = $stmtAllMembers->fetchAll();
+
+        if (empty($wsMembers)) {
+            continue;
+        }
+
+        // We will default the created_by of these default channels to the first member
+        $firstMemberId = (int)$wsMembers[0]['id'];
+
+        $defaultChannels = [
+            [
+                'slug' => 'general',
+                'name' => 'General',
+                'description' => 'Company-wide announcements and work-based matters.'
+            ],
+            [
+                'slug' => 'announcements',
+                'name' => 'Announcements',
+                'description' => 'Official announcements and updates.'
+            ]
+        ];
+
+        foreach ($defaultChannels as $defChan) {
+            // Check if exists
+            $stmtCheckChan->execute([$wsId, $defChan['slug']]);
+            $chanId = $stmtCheckChan->fetchColumn();
+
+            if (!$chanId) {
+                // Create channel
+                $stmtCreateChan->execute([
+                    ':workspace_id' => $wsId,
+                    ':slug' => $defChan['slug'],
+                    ':name' => $defChan['name'],
+                    ':description' => $defChan['description'],
+                    ':created_by' => $firstMemberId
+                ]);
+                $chanId = (int)$tgtPdo->lastInsertId();
+
+                // Create conversation
+                $stmtCreateConvo->execute([
+                    ':workspace_id' => $wsId,
+                    ':channel_id' => $chanId
+                ]);
+                $convoId = (int)$tgtPdo->lastInsertId();
+                echo "  - Created default channel '{$defChan['name']}' in workspace ID: {$wsId}\n";
+            } else {
+                $chanId = (int)$chanId;
+                // Get existing conversation ID
+                $stmtGetConvo = $tgtPdo->prepare("SELECT id FROM conversations WHERE channel_id = ? LIMIT 1");
+                $stmtGetConvo->execute([$chanId]);
+                $convoId = (int)$stmtGetConvo->fetchColumn();
+            }
+
+            // Ensure every active member is in the channel and conversation
+            $tgtPdo->beginTransaction();
+            foreach ($wsMembers as $member) {
+                $mId = (int)$member['id'];
+
+                // Check channel member
+                $stmtCheckMember->execute([$chanId, $mId]);
+                if (!$stmtCheckMember->fetchColumn()) {
+                    $stmtAddChanMember->execute([
+                        ':channel_id' => $chanId,
+                        ':workspace_member_id' => $mId
+                    ]);
+                }
+
+                // Check conversation participant
+                if ($convoId) {
+                    $stmtCheckConvoPart->execute([$convoId, $mId]);
+                    if (!$stmtCheckConvoPart->fetchColumn()) {
+                        $stmtAddConvoPart->execute([
+                            ':conversation_id' => $convoId,
+                            ':workspace_member_id' => $mId
+                        ]);
+                    }
+                }
+            }
+            $tgtPdo->commit();
+        }
+    }
+    echo "  - Default channels ensured and populated.\n";
+
+    // -------------------------------------------------------------------------
+    // STEP 10: Refreshing Channel Member Counts
+    // -------------------------------------------------------------------------
+    echo "[STEP 10] Refreshing Channel Member Counts...\n";
     $channelsList = $tgtPdo->query("SELECT id FROM channels")->fetchAll();
     $stmtUpdateCount = $tgtPdo->prepare("UPDATE channels SET member_count = ? WHERE id = ?");
 
