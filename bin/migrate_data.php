@@ -403,11 +403,13 @@ try {
             ':workspace_member_id' => $senderMemberId,
             ':joined_at' => $oldestMsgTime
         ]);
-        $stmtConvoPart->execute([
-            ':conversation_id' => $convoId,
-            ':workspace_member_id' => $receiverMemberId,
-            ':joined_at' => $oldestMsgTime
-        ]);
+        if ($senderMemberId !== $receiverMemberId) {
+            $stmtConvoPart->execute([
+                ':conversation_id' => $convoId,
+                ':workspace_member_id' => $receiverMemberId,
+                ':joined_at' => $oldestMsgTime
+            ]);
+        }
     }
     echo "  - Prepared " . count($dmConvoMap) . " unique DM conversation threads and participants.\n";
 
