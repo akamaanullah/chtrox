@@ -374,7 +374,7 @@
             }
         }
 
-        var allowedTags = { b: 1, i: 1, s: 1, u: 1, strong: 1, em: 1, ul: 1, ol: 1, li: 1, p: 1, br: 1, span: 1, div: 1, a: 1, pre: 1, code: 1 };
+        var allowedTags = { b: 1, i: 1, s: 1, u: 1, strong: 1, em: 1, ul: 1, ol: 1, li: 1, p: 1, br: 1, span: 1, div: 1, a: 1, pre: 1, code: 1, img: 1 };
         function cleanStyleAttribute(node) {
             if (!node.getAttribute || !node.getAttribute('style')) return;
             node.style.removeProperty('background');
@@ -410,6 +410,15 @@
                             isAllowedAttr = true;
                         } else if (tag === 'i' && (name === 'class' || name === 'data-lucide' || name === 'size')) {
                             isAllowedAttr = true;
+                        } else if (tag === 'img' && (name === 'src' || name === 'alt' || name === 'class' || name === 'style' || name === 'width' || name === 'height')) {
+                            if (name === 'src') {
+                                var val = node.getAttribute('src');
+                                if (val && (val.indexOf('data:image/') === 0 || val.indexOf('http://') === 0 || val.indexOf('https://') === 0 || val.indexOf('/') === 0)) {
+                                    isAllowedAttr = true;
+                                }
+                            } else {
+                                isAllowedAttr = true;
+                            }
                         }
                         if (!isAllowedAttr) node.removeAttribute(name);
                     }

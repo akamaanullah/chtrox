@@ -10928,3 +10928,22 @@ button.q-tag {
         border-radius: 10px;
     }
 }
+
+/* Inline images / screenshots in message bubbles (migrated from old base64 strings) */
+.dm-msg-bubble img, 
+.channel-msg-bubble img {
+    display: block;
+    max-width: 100%;
+    max-height: 400px;
+    height: auto;
+    border-radius: 8px;
+    margin: 6px 0;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: opacity 0.2s ease;
+}
+
+.dm-msg-bubble img:hover, 
+.channel-msg-bubble img:hover {
+    opacity: 0.95;
+}
