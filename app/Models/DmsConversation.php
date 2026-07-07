@@ -24,7 +24,19 @@ class DmsConversation extends Model
         }
 
         $stmt = self::db()->prepare("
-            SELECT wm.id as member_id, u.username, u.first_name, u.last_name, u.avatar_path
+            SELECT 
+                wm.id as member_id, 
+                u.username, 
+                u.first_name, 
+                u.last_name, 
+                u.avatar_path,
+                COALESCE((
+                    SELECT status 
+                    FROM user_presence 
+                    WHERE user_id = u.id 
+                    ORDER BY last_seen_at DESC, updated_at DESC 
+                    LIMIT 1
+                ), 'offline') as presence_status
             FROM workspace_members wm
             JOIN users u ON wm.user_id = u.id
             WHERE wm.workspace_id = ? AND wm.status = 'active' AND wm.id != ?
@@ -39,7 +51,8 @@ class DmsConversation extends Model
                 'id' => $row['member_id'],
                 'username' => $row['username'],
                 'name' => $row['first_name'] . ' ' . $row['last_name'],
-                'avatar' => $row['avatar_path'] ?: DEFAULT_AVATAR_URL
+                'avatar' => \App\Core\View::avatar($row['avatar_path']),
+                'presence_status' => $row['presence_status']
             ];
         }
 
@@ -62,7 +75,7 @@ class DmsConversation extends Model
         ];
     }
 
-    public static function sidebarDisplayItems(): array
+    public static function sidebarDisplayItems(?string $activeWith = null): array
     {
         $user = Session::user();
         $memberId = $user['workspace_member_id'] ?? 0;
@@ -73,11 +86,13 @@ class DmsConversation extends Model
             return [];
         }
 
-        // Fetch DM conversations for this member
+        $activeWith = $activeWith ?? '';
+
         $stmt = $db->prepare("
             SELECT 
                 c.id as conversation_id,
                 c.last_message_at,
+                other_wm.id as other_member_id,
                 other_u.username as other_username,
                 other_u.first_name,
                 other_u.last_name,
@@ -87,58 +102,77 @@ class DmsConversation extends Model
                 m.body as last_message_body,
                 m.message_type as last_message_type,
                 m.created_at as last_message_time,
+                m.deleted_for_everyone_at as last_message_deleted_at,
                 crc_other.last_read_message_id as other_last_read_message_id,
-                up.status as other_presence_status,
+                (
+                    SELECT status 
+                    FROM user_presence 
+                    WHERE user_id = other_wm.user_id 
+                    ORDER BY last_seen_at DESC, updated_at DESC 
+                    LIMIT 1
+                ) as other_presence_status,
                 (
                     SELECT COUNT(*) 
                     FROM messages m3
-                    LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
                     WHERE m3.conversation_id = c.id
-                      AND m3.sender_id != :member_id
+                      AND m3.sender_id != :member_id2
                       AND m3.deleted_for_everyone_at IS NULL
                       AND (crc.last_read_message_id IS NULL OR m3.id > crc.last_read_message_id)
                 ) as unread_count
             FROM conversations c
-            JOIN conversation_participants cp_me ON c.id = cp_me.conversation_id AND cp_me.workspace_member_id = :member_id AND cp_me.left_at IS NULL
-            JOIN conversation_participants cp_other ON c.id = cp_other.conversation_id AND cp_other.workspace_member_id != :member_id AND cp_other.left_at IS NULL
+            JOIN conversation_participants cp_me ON c.id = cp_me.conversation_id AND cp_me.workspace_member_id = :member_id3 AND cp_me.left_at IS NULL
+            JOIN conversation_participants cp_other ON c.id = cp_other.conversation_id AND cp_other.workspace_member_id != :member_id4 AND cp_other.left_at IS NULL
             JOIN workspace_members other_wm ON cp_other.workspace_member_id = other_wm.id
             JOIN users other_u ON other_wm.user_id = other_u.id
-            LEFT JOIN messages m ON m.id = (
-                SELECT m2.id FROM messages m2 
-                WHERE m2.conversation_id = c.id AND m2.deleted_for_everyone_at IS NULL
-                ORDER BY m2.id DESC LIMIT 1
-            )
+            LEFT JOIN messages m ON m.id = c.last_message_id
             LEFT JOIN conversation_read_cursors crc_other ON crc_other.conversation_id = c.id AND crc_other.workspace_member_id = cp_other.workspace_member_id
-            LEFT JOIN user_presence up ON up.user_id = other_wm.user_id
+            LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id1
             WHERE c.workspace_id = :workspace_id AND c.type = 'dm'
+              AND (c.last_message_id IS NOT NULL OR other_u.username = :active_with)
             ORDER BY COALESCE(c.last_message_at, c.created_at) DESC
+            LIMIT 100
         ");
         $stmt->execute([
-            'member_id' => $memberId,
-            'workspace_id' => $workspaceId
+            'member_id1' => $memberId,
+            'member_id2' => $memberId,
+            'member_id3' => $memberId,
+            'member_id4' => $memberId,
+            'workspace_id' => $workspaceId,
+            'active_with' => $activeWith
         ]);
         $rows = $stmt->fetchAll();
 
         $items = [];
+        $seenUsernames = [];
         foreach ($rows as $row) {
+            $otherUsername = $row['other_username'];
+            if (isset($seenUsernames[$otherUsername])) {
+                continue;
+            }
+            $seenUsernames[$otherUsername] = true;
+
             $formattedTime = '';
             if ($row['last_message_time']) {
                 $formattedTime = self::formatMessageTime($row['last_message_time']);
             }
 
             $preview = 'No messages yet';
-            $lastType = GiphyUrl::resolveMessageType(
-                (string)($row['last_message_type'] ?? 'text'),
-                (string)($row['last_message_body'] ?? '')
-            );
-            if ($lastType === 'voice') {
-                $preview = 'Voice message';
-            } elseif ($lastType === 'gif') {
-                $preview = 'Photo';
-            } elseif (($row['last_message_type'] ?? '') === 'file') {
-                $preview = 'Attachment';
+            if (!empty($row['last_message_deleted_at'])) {
+                $preview = 'This message was deleted';
             } else {
-                $preview = self::bodyToSidebarPreview($row['last_message_body'] ?? '') ?: 'No messages yet';
+                $lastType = GiphyUrl::resolveMessageType(
+                    (string)($row['last_message_type'] ?? 'text'),
+                    (string)($row['last_message_body'] ?? '')
+                );
+                if ($lastType === 'voice') {
+                    $preview = 'Voice message';
+                } elseif ($lastType === 'gif') {
+                    $preview = 'Photo';
+                } elseif (($row['last_message_type'] ?? '') === 'file') {
+                    $preview = 'Attachment';
+                } else {
+                    $preview = self::bodyToSidebarPreview($row['last_message_body'] ?? '') ?: 'No messages yet';
+                }
             }
 
             $lastMessageId = (int)($row['last_message_id'] ?? 0);
@@ -159,12 +193,14 @@ class DmsConversation extends Model
                 'id' => $row['other_username'],
                 'conversation_id' => (int)$row['conversation_id'],
                 'name' => $row['first_name'] . ' ' . $row['last_name'],
-                'avatar' => $row['avatar_path'] ?: DEFAULT_AVATAR_URL,
+                'avatar' => \App\Core\View::avatar($row['avatar_path']),
                 'preview' => $preview,
                 'time' => $formattedTime,
                 'unread' => (int) $row['unread_count'],
                 'last_is_mine' => $lastIsMine,
                 'read_status' => $readStatus,
+                'presence_status' => $row['other_presence_status'] ?? 'offline',
+                'member_id' => (int)$row['other_member_id'],
             ];
         }
 
@@ -173,7 +209,73 @@ class DmsConversation extends Model
 
     public static function welcomeCards(): array
     {
-        return array_values(self::users());
+        $user = Session::user();
+        $memberId = (int)($user['workspace_member_id'] ?? 0);
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
+        $db = self::db();
+
+        if ($memberId === 0 || $workspaceId === 0) {
+            return [];
+        }
+
+        // Fetch recently active DM contacts
+        $stmt = $db->prepare("
+            SELECT 
+                other_wm.id as member_id, 
+                other_u.username, 
+                other_u.first_name, 
+                other_u.last_name, 
+                other_u.avatar_path,
+                COALESCE(up.status, 'offline') as presence_status
+            FROM conversations c
+            JOIN conversation_participants cp_me ON c.id = cp_me.conversation_id AND cp_me.workspace_member_id = :member_id AND cp_me.left_at IS NULL
+            JOIN conversation_participants cp_other ON c.id = cp_other.conversation_id AND cp_other.workspace_member_id != :member_id AND cp_other.left_at IS NULL
+            JOIN workspace_members other_wm ON cp_other.workspace_member_id = other_wm.id
+            JOIN users other_u ON other_wm.user_id = other_u.id
+            LEFT JOIN user_presence up ON other_u.id = up.user_id
+            WHERE c.workspace_id = :workspace_id AND c.type = 'dm' AND c.last_message_id IS NOT NULL
+            ORDER BY c.last_message_at DESC, c.id DESC
+            LIMIT 4
+        ");
+        $stmt->execute([
+            'member_id' => $memberId,
+            'workspace_id' => $workspaceId
+        ]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $frequent = [];
+        $seenMemberIds = [];
+        foreach ($rows as $row) {
+            $otherMemberId = (int)$row['member_id'];
+            if (in_array($otherMemberId, $seenMemberIds, true)) {
+                continue;
+            }
+            $seenMemberIds[] = $otherMemberId;
+            $frequent[] = [
+                'id' => $otherMemberId,
+                'username' => $row['username'],
+                'name' => $row['first_name'] . ' ' . $row['last_name'],
+                'avatar' => \App\Core\View::avatar($row['avatar_path']),
+                'presence_status' => $row['presence_status']
+            ];
+        }
+
+        // If we have fewer than 4, pad with other active workspace members
+        if (count($frequent) < 4) {
+            $allUsers = self::users();
+            foreach ($allUsers as $u) {
+                if (count($frequent) >= 4) {
+                    break;
+                }
+                if (in_array((int)$u['id'], $seenMemberIds, true)) {
+                    continue;
+                }
+                $frequent[] = $u;
+                $seenMemberIds[] = (int)$u['id'];
+            }
+        }
+
+        return $frequent;
     }
 
     /** @return array<string, mixed> */
@@ -219,12 +321,13 @@ class DmsConversation extends Model
         return [
             'username' => $row['username'],
             'name' => $name,
-            'avatar' => $row['avatar_path'] ?: DEFAULT_AVATAR_URL,
+            'avatar' => \App\Core\View::avatar($row['avatar_path']),
             'handle' => '@' . $row['username'],
             'bio' => $bio !== '' ? $bio : 'No bio added yet.',
             'job_title' => trim($row['job_title'] ?? ''),
             'is_online' => $presence['online'],
             'presence_label' => $presence['label'],
+            'presence_status' => $row['presence_status'] ?? 'offline',
         ];
     }
 
@@ -682,11 +785,22 @@ class DmsConversation extends Model
             }
         }
 
+        $cleanBody = '';
+        if (!$deletedForEveryone) {
+            if ($isVoice) {
+                $cleanBody = '';
+            } elseif ($messageType === 'gif') {
+                $cleanBody = trim($row['body'] ?? '');
+            } else {
+                $cleanBody = \App\Helpers\HtmlSanitizer::clean($row['body'] ?? '');
+            }
+        }
+
         return [
             'id' => $messageId,
             'side' => !empty($row['is_me']) ? 'me' : 'them',
-            'text' => ($deletedForEveryone || $isVoice) ? '' : $row['body'],
-            'body' => ($deletedForEveryone || $isVoice) ? '' : $row['body'],
+            'text' => $cleanBody,
+            'body' => $cleanBody,
             'voice_duration_seconds' => (!$deletedForEveryone && $isVoice)
                 ? max(0, (int)trim((string)($row['body'] ?? '')))
                 : 0,
@@ -707,23 +821,7 @@ class DmsConversation extends Model
 
     public static function getReplySnippet(int $replyToId): string
     {
-        $stmt = self::db()->prepare("SELECT body, message_type, deleted_for_everyone_at FROM messages WHERE id = ?");
-        $stmt->execute([$replyToId]);
-        $row = $stmt->fetch();
-        if (!$row) return 'Message';
-        if ($row['deleted_for_everyone_at'] !== null) return 'This message was deleted';
-        $messageType = GiphyUrl::resolveMessageType(
-            (string)($row['message_type'] ?? 'text'),
-            (string)($row['body'] ?? '')
-        );
-        if ($messageType === 'file') return 'File';
-        if ($messageType === 'gif') return 'Photo';
-        if ($messageType === 'voice') return 'Voice message';
-        $text = self::bodyToPlainText($row['body'] ?? '', false);
-        if (strlen($text) > 80) {
-            $text = substr($text, 0, 80) . '…';
-        }
-        return $text ?: 'Message';
+        return \App\Helpers\MessageEnricher::getReplySnippet($replyToId);
     }
 
     /**
@@ -756,8 +854,9 @@ class DmsConversation extends Model
         if ($text === '') {
             return '';
         }
-        if ($maxLen > 0 && strlen($text) > $maxLen) {
-            return substr($text, 0, $maxLen) . '...';
+        // LOW-10: Use mb_strlen/mb_substr for correct multibyte (Unicode) character counting
+        if ($maxLen > 0 && mb_strlen($text) > $maxLen) {
+            return mb_substr($text, 0, $maxLen) . '...';
         }
         return $text;
     }
@@ -765,26 +864,7 @@ class DmsConversation extends Model
     /** @return array{label: string, online: bool} */
     private static function formatPresence(string $status, ?string $lastSeenAt): array
     {
-        if ($status === 'online') {
-            return ['label' => 'Active now', 'online' => true];
-        }
-
-        if (!$lastSeenAt) {
-            return ['label' => 'Offline', 'online' => false];
-        }
-
-        $diff = time() - strtotime($lastSeenAt);
-        if ($diff < 60) {
-            return ['label' => 'Active just now', 'online' => false];
-        }
-        if ($diff < 3600) {
-            return ['label' => 'Active ' . (int)floor($diff / 60) . 'm ago', 'online' => false];
-        }
-        if ($diff < 86400) {
-            return ['label' => 'Active ' . (int)floor($diff / 3600) . 'h ago', 'online' => false];
-        }
-
-        return ['label' => 'Active ' . (int)floor($diff / 86400) . 'd ago', 'online' => false];
+        return \App\Helpers\TimeFormatter::formatPresence($status, $lastSeenAt);
     }
 
     private static function formatFileSize(int $bytes): string
@@ -816,17 +896,7 @@ class DmsConversation extends Model
 
     public static function getMessageReactions(int $messageId, int $currentMemberId): array
     {
-        $stmt = self::db()->prepare("
-            SELECT 
-                emoji,
-                COUNT(*) as count,
-                MAX(CASE WHEN workspace_member_id = ? THEN 1 ELSE 0 END) as reacted
-            FROM message_reactions
-            WHERE message_id = ?
-            GROUP BY emoji
-        ");
-        $stmt->execute([$currentMemberId, $messageId]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return \App\Helpers\MessageEnricher::getMessageReactions($messageId, $currentMemberId);
     }
 
     public static function getMessageAttachments(int $messageId): array
@@ -889,18 +959,7 @@ class DmsConversation extends Model
 
     private static function formatMessageTime(string $timestamp): string
     {
-        $time = strtotime($timestamp);
-        $date = date('Y-m-d', $time);
-        $today = date('Y-m-d');
-        $yesterday = date('Y-m-d', strtotime('yesterday'));
-
-        if ($date === $today) {
-            return date('h:i A', $time);
-        } elseif ($date === $yesterday) {
-            return 'Yesterday ' . date('h:i A', $time);
-        } else {
-            return date('M j, h:i A', $time);
-        }
+        return \App\Helpers\TimeFormatter::formatMessageTime($timestamp);
     }
 
     public static function getOrCreateConversationId(string $otherUsername): int

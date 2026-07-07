@@ -104,14 +104,16 @@
         }
 
         var validation = validateFiles(normalized);
-        if (!validation.valid) {
+        if (validation.files.length === 0) {
             return Promise.reject(new Error(validation.errors.join(' ') || 'Invalid files.'));
         }
+
+        var validFiles = validation.files.map(function (f) { return f.file; });
 
         return new Promise(function (resolve, reject) {
             var xhr = new XMLHttpRequest();
             var formData = new FormData();
-            normalized.forEach(function (file) {
+            validFiles.forEach(function (file) {
                 formData.append('files[]', file);
             });
 
@@ -132,6 +134,17 @@
                 }
 
                 if (xhr.status >= 200 && xhr.status < 300 && payload.success) {
+                    if (validation.errors.length > 0) {
+                        payload.partial = true;
+                        payload.errors = payload.errors || [];
+                        validation.errors.forEach(function (errStr) {
+                            payload.errors.push({
+                                name: 'File',
+                                error: 'client_validation_failed',
+                                message: errStr
+                            });
+                        });
+                    }
                     resolve(payload);
                     return;
                 }
@@ -147,7 +160,10 @@
                 reject(new Error('Upload cancelled.'));
             });
 
-            xhr.open('POST', (global.CHATROX && global.CHATROX.baseUrl ? global.CHATROX.baseUrl : '') + '/api/files/upload');
+            xhr.open('POST', (global.CHATROX && global.CHATROX.apiUrl ? global.CHATROX.apiUrl : '') + '/files/upload');
+            if (global.CHATROX && global.CHATROX.csrfToken) {
+                xhr.setRequestHeader('X-CSRF-Token', global.CHATROX.csrfToken);
+            }
             xhr.send(formData);
         });
     }

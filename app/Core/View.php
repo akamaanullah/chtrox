@@ -11,12 +11,40 @@ class View
 
     public static function asset(string $path): string
     {
+        $realPath = dirname(dirname(__DIR__)) . '/public/' . ltrim($path, '/');
+        $version = '';
+        if (is_file($realPath)) {
+            $version = '?v=' . filemtime($realPath);
+        }
+        return BASE_URL . '/' . ltrim($path, '/') . $version;
+    }
+
+    public static function avatar(?string $path): string
+    {
+        if (empty($path)) {
+            return DEFAULT_AVATAR_URL;
+        }
+
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            return $path;
+        }
+
+        // Strip public/ if present
+        if (str_starts_with($path, 'public/')) {
+            $path = substr($path, 7);
+        }
+
         return BASE_URL . '/' . ltrim($path, '/');
     }
 
     public static function adminAsset(string $path): string
     {
-        return BASE_URL . '/admin_assets/' . ltrim($path, '/');
+        $realPath = dirname(dirname(__DIR__)) . '/public/admin_assets/' . ltrim($path, '/');
+        $version = '';
+        if (is_file($realPath)) {
+            $version = '?v=' . filemtime($realPath);
+        }
+        return BASE_URL . '/admin_assets/' . ltrim($path, '/') . $version;
     }
 
     public static function url(string $route = 'home'): string

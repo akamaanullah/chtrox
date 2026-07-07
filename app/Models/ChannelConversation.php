@@ -22,7 +22,7 @@ class ChannelConversation extends Model
         $stmt = self::db()->prepare("
             SELECT c.*, conv.id as conversation_id
             FROM channels c
-            JOIN conversations conv ON conv.channel_id = c.id
+            LEFT JOIN conversations conv ON conv.channel_id = c.id
             WHERE c.workspace_id = ? AND c.slug = ? AND c.status = 'active'
         ");
         $stmt->execute([$workspaceId, $slug]);
@@ -33,7 +33,7 @@ class ChannelConversation extends Model
             $stmt = self::db()->prepare("
                 SELECT c.*, conv.id as conversation_id
                 FROM channels c
-                JOIN conversations conv ON conv.channel_id = c.id
+                LEFT JOIN conversations conv ON conv.channel_id = c.id
                 WHERE c.workspace_id = ? AND FIND_IN_SET(?, c.former_slugs) AND c.status = 'active'
                 LIMIT 1
             ");
@@ -46,7 +46,7 @@ class ChannelConversation extends Model
             $stmt = self::db()->prepare("
                 SELECT c.*, conv.id as conversation_id
                 FROM channels c
-                JOIN conversations conv ON conv.channel_id = c.id
+                LEFT JOIN conversations conv ON conv.channel_id = c.id
                 WHERE c.workspace_id = ? AND c.is_default = 1 AND c.status = 'active'
                 ORDER BY c.id ASC
                 LIMIT 1
@@ -60,6 +60,7 @@ class ChannelConversation extends Model
                 'channel_id' => 'general',
                 'active_channel' => [
                     'id' => 0,
+                    'conversation_id' => 0,
                     'name' => '#general',
                     'raw_name' => 'general',
                     'slug' => 'general',
@@ -70,6 +71,15 @@ class ChannelConversation extends Model
                     'is_default' => 1
                 ]
             ];
+        }
+
+        if ($channel && empty($channel['conversation_id'])) {
+            $stmt = self::db()->prepare("
+                INSERT INTO conversations (workspace_id, type, channel_id)
+                VALUES (?, 'channel', ?)
+            ");
+            $stmt->execute([$workspaceId, $channel['id']]);
+            $channel['conversation_id'] = (int)self::db()->lastInsertId();
         }
 
         $stmt = self::db()->prepare("SELECT COUNT(*) FROM channel_members cm JOIN workspace_members wm ON cm.workspace_member_id = wm.id WHERE cm.channel_id = ? AND cm.left_at IS NULL AND wm.status = 'active'");
@@ -114,9 +124,8 @@ class ChannelConversation extends Model
                 conv.id as conversation_id,
                 conv.last_message_at,
                 (
-                    SELECT COUNT(*) 
+                    SELECT COUNT(*)
                     FROM messages m
-                    LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = conv.id AND crc.workspace_member_id = :member_id
                     WHERE m.conversation_id = conv.id
                       AND m.sender_id != :member_id
                       AND m.deleted_for_everyone_at IS NULL
@@ -125,6 +134,7 @@ class ChannelConversation extends Model
             FROM channels c
             JOIN channel_members cm ON c.id = cm.channel_id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
             JOIN conversations conv ON conv.channel_id = c.id
+            LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = conv.id AND crc.workspace_member_id = :member_id
             WHERE c.workspace_id = :workspace_id AND c.status = 'active'
             ORDER BY COALESCE(conv.last_message_at, conv.created_at) DESC
         ");
@@ -155,6 +165,7 @@ class ChannelConversation extends Model
             $items[] = [
                 'id' => $row['slug'],
                 'channel_id' => $row['id'],
+                'conversation_id' => (int)$row['conversation_id'],
                 'initials' => $initials,
                 'title' => '#' . $row['name'],
                 'meta' => $row['member_count'] . ' members',
@@ -293,7 +304,7 @@ class ChannelConversation extends Model
                 'time' => self::formatMessageTime($row['created_at']),
                 'created_at' => $row['created_at'],
                 'edited' => !$deletedForEveryone && $row['edited_at'] !== null,
-                'avatar' => $row['avatar_path'] ?: DEFAULT_AVATAR_URL,
+                'avatar' => \App\Core\View::avatar($row['avatar_path']),
                 'reactions' => $deletedForEveryone ? [] : ($reactionsByMessage[$messageId] ?? []),
                 'attachments' => $deletedForEveryone ? [] : ($attachmentsByMessage[$messageId] ?? []),
                 'reply_to_id' => $deletedForEveryone ? null : $row['reply_to_id'],
@@ -433,7 +444,16 @@ class ChannelConversation extends Model
                 (string)($row['body'] ?? '')
             );
             $senderName = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
-            $body = ($deletedForEveryone || ($row['message_type'] ?? '') === 'voice') ? '' : ($row['body'] ?? '');
+            $rawBody = ($deletedForEveryone || ($row['message_type'] ?? '') === 'voice') ? '' : ($row['body'] ?? '');
+            if ($rawBody !== '') {
+                if ($messageType === 'gif') {
+                    $body = trim($rawBody);
+                } else {
+                    $body = \App\Helpers\HtmlSanitizer::clean($rawBody);
+                }
+            } else {
+                $body = '';
+            }
 
             $messages[] = [
                 'id' => $messageId,
@@ -446,7 +466,7 @@ class ChannelConversation extends Model
                 'created_at' => $row['created_at'],
                 'time_label' => self::formatMessageTime($row['created_at']),
                 'edited' => !$deletedForEveryone && $row['edited_at'] !== null,
-                'avatar' => $row['avatar_path'] ?: DEFAULT_AVATAR_URL,
+                'avatar' => \App\Core\View::avatar($row['avatar_path']),
                 'reactions' => $deletedForEveryone ? [] : ($reactionsByMessage[$messageId] ?? []),
                 'attachments' => $deletedForEveryone ? [] : ($attachmentsByMessage[$messageId] ?? []),
                 'reply_to_id' => $deletedForEveryone ? null : $row['reply_to_id'],
@@ -493,38 +513,12 @@ class ChannelConversation extends Model
 
     public static function getReplySnippet(int $replyToId): string
     {
-        $stmt = self::db()->prepare("SELECT body, message_type, deleted_for_everyone_at FROM messages WHERE id = ?");
-        $stmt->execute([$replyToId]);
-        $row = $stmt->fetch();
-        if (!$row) return 'Message';
-        if ($row['deleted_for_everyone_at'] !== null) return 'This message was deleted';
-        $messageType = GiphyUrl::resolveMessageType(
-            (string)($row['message_type'] ?? 'text'),
-            (string)($row['body'] ?? '')
-        );
-        if ($messageType === 'file') return 'File';
-        if ($messageType === 'gif') return 'Photo';
-        if ($messageType === 'voice') return 'Voice message';
-        $text = DmsConversation::bodyToPlainText($row['body'] ?? '', false);
-        if (strlen($text) > 80) {
-            $text = substr($text, 0, 80) . '…';
-        }
-        return $text ?: 'Message';
+        return \App\Helpers\MessageEnricher::getReplySnippet($replyToId);
     }
 
     public static function getMessageReactions(int $messageId, int $currentMemberId): array
     {
-        $stmt = self::db()->prepare("
-            SELECT 
-                emoji,
-                COUNT(*) as count,
-                MAX(CASE WHEN workspace_member_id = ? THEN 1 ELSE 0 END) as reacted
-            FROM message_reactions
-            WHERE message_id = ?
-            GROUP BY emoji
-        ");
-        $stmt->execute([$currentMemberId, $messageId]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return \App\Helpers\MessageEnricher::getMessageReactions($messageId, $currentMemberId);
     }
 
     public static function getMessageAttachments(int $messageId): array
@@ -564,7 +558,7 @@ class ChannelConversation extends Model
             $members[] = [
                 'member_id' => (int)$row['member_id'],
                 'name' => $row['first_name'] . ' ' . $row['last_name'],
-                'avatar' => $row['avatar_path'] ?: DEFAULT_AVATAR_URL,
+                'avatar' => \App\Core\View::avatar($row['avatar_path']),
                 'username' => $row['username'],
                 'channel_role' => $row['channel_role'] ?? 'member',
             ];
@@ -595,17 +589,38 @@ class ChannelConversation extends Model
     private static function applyChannelReadReceipts(array $messages, int $conversationId): array
     {
         $user = Session::user();
+        $workspaceId = $user['workspace_id'] ?? 0;
         $memberId = $user['workspace_member_id'] ?? 0;
+        
+        if ($workspaceId === 0 || $memberId === 0) {
+            return $messages;
+        }
+
+        // HIGH-08: Check if there are any messages sent by the current user
+        $hasMyMessages = false;
+        foreach ($messages as $message) {
+            if (($message['side'] ?? '') === 'me') {
+                $hasMyMessages = true;
+                break;
+            }
+        }
+
+        // If the user has no messages in this batch, skip the heavy queries and loop entirely
+        if (!$hasMyMessages) {
+            return $messages;
+        }
+
         $db = self::db();
 
         $stmt = $db->prepare("
             SELECT 
-                wm.id as member_id,
+                wm.id AS workspace_member_id,
+                wm.role,
                 u.first_name,
                 u.last_name,
                 u.avatar_path,
-                crc.last_read_message_id,
-                crc.last_read_at
+                MAX(crc.last_read_message_id) AS last_read_message_id,
+                MAX(crc.last_read_at) AS last_read_at
             FROM channel_members cm
             JOIN channels c ON cm.channel_id = c.id
             JOIN conversations conv ON conv.channel_id = c.id
@@ -615,6 +630,7 @@ class ChannelConversation extends Model
             WHERE conv.id = :conversation_id 
               AND wm.id != :member_id
               AND cm.left_at IS NULL
+            GROUP BY wm.id, wm.role, u.first_name, u.last_name, u.avatar_path
         ");
         $stmt->execute([
             'conversation_id' => $conversationId,
@@ -634,7 +650,7 @@ class ChannelConversation extends Model
 
             foreach ($channelMembers as $m) {
                 $name = $m['first_name'] . ' ' . $m['last_name'];
-                $avatar = $m['avatar_path'] ?: DEFAULT_AVATAR_URL;
+                $avatar = \App\Core\View::avatar($m['avatar_path']);
                 
                 if ($m['last_read_message_id'] !== null && $m['last_read_message_id'] >= $messageId) {
                     $readBy[] = [
@@ -768,17 +784,6 @@ class ChannelConversation extends Model
 
     private static function formatMessageTime(string $timestamp): string
     {
-        $time = strtotime($timestamp);
-        $date = date('Y-m-d', $time);
-        $today = date('Y-m-d');
-        $yesterday = date('Y-m-d', strtotime('yesterday'));
-
-        if ($date === $today) {
-            return date('h:i A', $time);
-        } elseif ($date === $yesterday) {
-            return 'Yesterday ' . date('h:i A', $time);
-        } else {
-            return date('M j, h:i A', $time);
-        }
+        return \App\Helpers\TimeFormatter::formatMessageTime($timestamp);
     }
 }

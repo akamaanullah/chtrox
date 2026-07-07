@@ -14,7 +14,7 @@
         <div class="bch-right" style="display: flex; gap: 16px; align-items: center;">
             <div class="search-box" style="width: 280px; margin-bottom: 0;">
                 <i data-lucide="search" size="18"></i>
-                <input type="text" placeholder="Search by name...">
+                <input type="text" class="js-search-browse-channels" placeholder="Search by name...">
             </div>
             <button type="button" class="btn-create-channel-main js-open-create-channel-modal">
                 <i data-lucide="plus" size="18"></i>
@@ -37,11 +37,12 @@
                 <?php if ($channel['joined']): ?>
                     <span class="btn-joined">Joined</span>
                 <?php elseif (!empty($channel['request_pending'])): ?>
-                    <span class="btn-joined">Requested</span>
+                    <span class="btn-joined btn-requested">Requested</span>
                 <?php else: ?>
                     <button type="button" class="btn-join"><?php echo $channel['visibility'] === 'private' ? 'Request' : 'Join'; ?></button>
                 <?php endif; ?>
             </div>
         <?php endforeach; ?>
     </div>
+    <div class="no-results-message" id="allChannelsEmpty" style="text-align: center; padding: 40px; color: var(--text-slate); display: none;">No channels found matching your search.</div>
 </div>

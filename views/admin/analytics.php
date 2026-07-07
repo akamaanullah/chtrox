@@ -18,25 +18,25 @@
     <div class="stat-card">
         <div class="stat-header">
             <span class="stat-label">Total Messages</span>
-            <span class="stat-badge positive">+18%</span>
+            <span class="stat-badge positive">Live</span>
         </div>
-        <span class="stat-value">45,672</span>
+        <span class="stat-value"><?php echo $total_messages; ?></span>
         <div class="stat-line green"></div>
     </div>
     <div class="stat-card">
         <div class="stat-header">
             <span class="stat-label">Monthly Active Users</span>
-            <span class="stat-badge positive">+5%</span>
+            <span class="stat-badge positive">30d</span>
         </div>
-        <span class="stat-value">1,284</span>
+        <span class="stat-value"><?php echo $active_users; ?></span>
         <div class="stat-line blue"></div>
     </div>
     <div class="stat-card">
         <div class="stat-header">
             <span class="stat-label">Storage Used</span>
-            <span class="stat-badge neutral">82%</span>
+            <span class="stat-badge neutral">10GB max</span>
         </div>
-        <span class="stat-value">12.4 GB</span>
+        <span class="stat-value"><?php echo $storage_label; ?></span>
         <div class="stat-line orange"></div>
     </div>
     <div class="stat-card">
@@ -110,19 +110,19 @@
 
             <div class="pin-highlights-grid" style="margin-top: 20px;">
                 <div class="p-highlight-box">
-                    <span class="h-val">124</span>
+                    <span class="h-val"><?php echo $total_pins; ?></span>
                     <span class="h-lbl">TOTAL PINS</span>
                 </div>
                 <div class="p-highlight-box">
-                    <span class="h-val">High</span>
+                    <span class="h-val"><?php echo $priority_level; ?></span>
                     <span class="h-lbl">PRIORITY LVL</span>
                 </div>
                 <div class="p-highlight-box">
-                    <span class="h-val">4.2</span>
+                    <span class="h-val"><?php echo $pins_per_day; ?></span>
                     <span class="h-lbl">PINS / DAY</span>
                 </div>
                 <div class="p-highlight-box">
-                    <span class="h-val">82%</span>
+                    <span class="h-val"><?php echo $interaction_pct; ?></span>
                     <span class="h-lbl">INTERACTION</span>
                 </div>
             </div>
@@ -133,73 +133,25 @@
     <div class="data-card top-channels">
         <div class="card-header">
             <h3>Top Active Channels</h3>
-            <a href="#" class="view-all">View All</a>
+            <a href="<?php echo \App\Core\View::url('admin/channels'); ?>" class="view-all">View All</a>
         </div>
         <div class="data-list">
-            <div class="data-item">
-                <div class="item-rank">1</div>
-                <div class="item-info">
-                    <span class="item-name">#general</span>
-                    <span class="item-meta">8,420 messages</span>
+            <?php if (empty($top_channels)): ?>
+                <div class="data-item" style="justify-content: center; padding: 24px; color: var(--slate-400);">
+                    No activity recorded yet
                 </div>
-                <div class="item-trend positive"><i data-lucide="trending-up"></i></div>
-            </div>
-            <div class="data-item">
-                <div class="item-rank">2</div>
-                <div class="item-info">
-                    <span class="item-name">#development</span>
-                    <span class="item-meta">5,310 messages</span>
-                </div>
-                <div class="item-trend positive"><i data-lucide="trending-up"></i></div>
-            </div>
-            <div class="data-item">
-                <div class="item-rank">3</div>
-                <div class="item-info">
-                    <span class="item-name">#marketing</span>
-                    <span class="item-meta">2,154 messages</span>
-                </div>
-                <div class="item-trend neutral"><i data-lucide="minus"></i></div>
-            </div>
-            <div class="data-item">
-                <div class="item-rank">4</div>
-                <div class="item-info">
-                    <span class="item-name">#design-system</span>
-                    <span class="item-meta">1,840 messages</span>
-                </div>
-                <div class="item-trend positive"><i data-lucide="trending-up"></i></div>
-            </div>
-            <div class="data-item">
-                <div class="item-rank">5</div>
-                <div class="item-info">
-                    <span class="item-name">#announcements</span>
-                    <span class="item-meta">950 messages</span>
-                </div>
-                <div class="item-trend positive"><i data-lucide="trending-up"></i></div>
-            </div>
-            <div class="data-item">
-                <div class="item-rank">6</div>
-                <div class="item-info">
-                    <span class="item-name">#support</span>
-                    <span class="item-meta">420 messages</span>
-                </div>
-                <div class="item-trend neutral"><i data-lucide="minus"></i></div>
-            </div>
-            <div class="data-item">
-                <div class="item-rank">7</div>
-                <div class="item-info">
-                    <span class="item-name">#random</span>
-                    <span class="item-meta">310 messages</span>
-                </div>
-                <div class="item-trend positive"><i data-lucide="trending-up"></i></div>
-            </div>
-            <div class="data-item">
-                <div class="item-rank">8</div>
-                <div class="item-info">
-                    <span class="item-name">#ux-research</span>
-                    <span class="item-meta">280 messages</span>
-                </div>
-                <div class="item-trend neutral"><i data-lucide="minus"></i></div>
-            </div>
+            <?php else: ?>
+                <?php $rank = 1; foreach ($top_channels as $tc): ?>
+                    <div class="data-item">
+                        <div class="item-rank"><?php echo $rank++; ?></div>
+                        <div class="item-info">
+                            <span class="item-name">#<?php echo \App\Core\View::e($tc['name']); ?></span>
+                            <span class="item-meta"><?php echo number_format($tc['message_count']); ?> messages</span>
+                        </div>
+                        <div class="item-trend positive"><i data-lucide="trending-up"></i></div>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </div>
     </div>
 </div>

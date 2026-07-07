@@ -1,7 +1,7 @@
 <div class="content-inner">
     <div class="dash-top">
         <div class="greeting">
-            <div class="office-tag">OFFICE HQ DASHBOARD</div>
+            <div class="office-tag"><?php echo htmlspecialchars(strtoupper($home_greeting['workspace_name'] ?? 'Office HQ') . ' DASHBOARD'); ?></div>
             <h1>Welcome, <span class="text-primary"><?php echo htmlspecialchars($home_greeting['user_name']); ?></span> 👋</h1>
             <p id="homeDateLabel"><?php echo htmlspecialchars($home_greeting['date_label']); ?></p>
         </div>
@@ -59,7 +59,7 @@
                 <h3>Global Workspace Search</h3>
             </div>
             <div class="search-input-wrap">
-                <input type="text" placeholder="Search messages, files, or people across Chatrox..."
+                <input type="text" placeholder="Search messages, files, or people across ChatRox..."
                     class="dash-search-input" id="homeGlobalSearchInput" autocomplete="off" aria-label="Global workspace search">
                 <button type="button" class="search-submit" id="homeGlobalSearchSubmit" aria-label="Search">
                     <i data-lucide="arrow-right" size="18"></i>
@@ -124,8 +124,12 @@
         </div>
         <div class="ann-grid" id="homeAnnouncementsGrid">
             <?php if (empty($home_announcements)): ?>
-                <div class="ann-card ann-card--empty">
-                    <p>No active announcements right now.</p>
+                <div class="ann-card ann-card--empty" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; text-align: center; border: 1.5px dashed var(--border-color, #e2e8f0); background: #f8fafc; border-radius: 16px; min-height: 180px; width: 100%; gap: 12px; box-sizing: border-box; grid-column: 1 / -1;">
+                    <div style="background: var(--indigo-50, rgba(99, 102, 241, 0.06)); color: var(--indigo-600, #4f46e5); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 4px;">
+                        <i data-lucide="megaphone-off" size="24"></i>
+                    </div>
+                    <p style="margin: 0; color: var(--text-primary, #0f172a); font-size: 15px; font-weight: 600; font-family: inherit;">No Active Announcements</p>
+                    <span style="color: var(--text-muted, #64748b); font-size: 13px; font-family: inherit;">Important updates or company events will be displayed here.</span>
                 </div>
             <?php else: ?>
                 <?php foreach ($home_announcements as $ann): ?>
@@ -155,7 +159,7 @@
     <footer class="final-footer">
         <div class="footer-brand">
             <h4>CHATROX</h4>
-            <p>BUILT FOR HIGH-PERFORMANCE DISTRIBUTED TEAMS</p>
+            <p>Built for high-performance distributed teams</p>
         </div>
         <div class="footer-links">
             <a href="javascript:void(0)" onclick="toggleAboutModal()">About</a>

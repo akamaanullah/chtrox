@@ -91,7 +91,9 @@ class FrontController extends Controller
             'main_html' => View::exists($contentView)
                 ? View::capture($contentView, $sharedData)
                 : '<h1>Section coming soon...</h1>',
-            'scripts' => array_values(array_unique($this->resolvePageScripts($activeTab, $viewData))),
+            'scripts' => array_map(function($script) {
+                return \App\Core\View::asset($script);
+            }, array_values(array_unique($this->resolvePageScripts($activeTab, $viewData)))),
             'meta' => $this->extractPageMeta($activeTab, $viewData),
         ];
     }
@@ -152,6 +154,10 @@ class FrontController extends Controller
             $scripts = array_merge($scripts, $assets['activity']);
         } elseif ($activeTab === 'files') {
             $scripts = array_merge($scripts, $assets['files']);
+        } elseif ($activeTab === 'settings') {
+            $scripts = array_merge($scripts, $assets['settings']);
+        } elseif ($activeTab === 'people') {
+            $scripts = array_merge($scripts, $assets['people']);
         }
 
         return $scripts;

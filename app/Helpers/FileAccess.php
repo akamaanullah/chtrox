@@ -19,7 +19,7 @@ class FileAccess
             return true;
         }
 
-        $stmt = $db->prepare('
+        $stmt = $db->prepare("
             SELECT 1
             FROM message_attachments ma
             INNER JOIN messages m ON m.id = ma.message_id
@@ -36,11 +36,11 @@ class FileAccess
               AND m.workspace_id = ?
               AND m.deleted_for_everyone_at IS NULL
               AND (
-                    (c.type IN (\'dm\', \'group_dm\') AND cp.id IS NOT NULL)
-                 OR (c.type = \'channel\' AND cm.id IS NOT NULL)
+                    (c.type IN ('dm', 'group_dm') AND cp.id IS NOT NULL)
+                 OR (c.type = 'channel' AND cm.id IS NOT NULL)
               )
             LIMIT 1
-        ');
+        ");
         $stmt->execute([$memberId, $memberId, (int)$file['id'], $workspaceId]);
 
         return (bool)$stmt->fetchColumn();
@@ -85,16 +85,25 @@ class FileAccess
 
     /**
      * Safe Content-Disposition: inline only for previewable media; everything else downloads.
+     * Block SVG files to avoid Stored XSS via inline scripts.
      */
     public static function isInlineDisposition(string $mimeType, string $extension): bool
     {
+        $extension = strtolower(trim($extension));
+        $mimeType = strtolower(trim($mimeType));
+
+        // HIGH-05: Force attachment disposition for SVGs/XML to prevent Stored XSS
+        if ($extension === 'svg' || str_contains($mimeType, 'svg') || str_contains($mimeType, 'xml')) {
+            return false;
+        }
+
         if (str_starts_with($mimeType, 'image/')
             || str_starts_with($mimeType, 'audio/')
             || str_starts_with($mimeType, 'video/')) {
             return true;
         }
 
-        $previewExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'mp3', 'wav', 'ogg', 'webm', 'mp4', 'mov'];
-        return in_array(strtolower($extension), $previewExtensions, true);
+        $previewExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp3', 'wav', 'ogg', 'webm', 'mp4', 'mov'];
+        return in_array($extension, $previewExtensions, true);
     }
 }

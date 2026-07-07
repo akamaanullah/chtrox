@@ -14,8 +14,8 @@ use App\Core\View;
             <div class="nav-item-wrapper <?php echo (isset($tab['is_more'])) ? 'more-trigger' : ''; ?>">
                 <?php if (isset($tab['is_more'])): ?>
                     <div
-                        class="nav-item no-link <?php echo ($active_tab == 'files' || $active_tab == 'browse-channels') ? 'active' : ''; ?>">
-                        <?php if ($active_tab == 'files' || $active_tab == 'browse-channels'): ?>
+                        class="nav-item no-link <?php echo ($active_tab == 'files' || $active_tab == 'browse-channels' || $active_tab == 'settings') ? 'active' : ''; ?>" data-nav-tab="more">
+                        <?php if ($active_tab == 'files' || $active_tab == 'browse-channels' || $active_tab == 'settings'): ?>
                             <div class="active-bar"></div>
                         <?php endif; ?>
                         <div class="nav-icon-box">
@@ -60,6 +60,11 @@ use App\Core\View;
                                 <i data-lucide="layers" size="16"></i>
                                 <span>Channels</span>
                             </a>
+                            <a href="<?php echo View::url('settings'); ?>"
+                                class="more-option <?php echo ($active_tab == 'settings') ? 'active' : ''; ?>">
+                                <i data-lucide="settings" size="16"></i>
+                                <span>Settings</span>
+                            </a>
                         </div>
                     </div>
                 <?php endif; ?>
@@ -80,12 +85,18 @@ use App\Core\View;
         } else {
             $avatarUrl = DEFAULT_AVATAR_URL;
         }
+
+        // Fetch current presence status from database to show correct color
+        $sidebarDb = \App\Core\Database::connection();
+        $sidebarStmtPresence = $sidebarDb->prepare("SELECT status FROM user_presence WHERE user_id = ? LIMIT 1");
+        $sidebarStmtPresence->execute([$currentUser['id'] ?? 0]);
+        $currentPresenceStatus = $sidebarStmtPresence->fetchColumn() ?: 'online';
         ?>
         <a href="#" class="nav-item js-open-profile-panel" id="sidebarAccountBtn">
-            <div class="account-box">
+            <div class="account-box" data-member-id="<?php echo (int)($currentUser['workspace_member_id'] ?? 0); ?>">
                 <img src="<?php echo htmlspecialchars($avatarUrl); ?>"
                     alt="Account" class="sidebar-user-avatar">
-                <div class="status-dot"></div>
+                <div class="status-dot status-dot--<?php echo htmlspecialchars($currentPresenceStatus); ?>"></div>
             </div>
             <span class="nav-text">Account</span>
         </a>

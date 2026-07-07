@@ -9,7 +9,7 @@ use App\Core\View;
                 <img src="<?php echo View::asset('assets/images/logo.png'); ?>" alt="ChatRox" width="50" height="50">
             </div>
             <div class="sidebar-brand-info">
-                <span class="sidebar-brand-name">ChatroxAdmin</span>
+                <span class="sidebar-brand-name">ChatRox Admin</span>
                 <span class="sidebar-brand-role">Admin</span>
             </div>
         </div>

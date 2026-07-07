@@ -76,7 +76,7 @@ class AuthController extends Controller
                 );
             }
         }
-        Session::destroy();
+        Session::logout();
         $this->redirect('/login');
     }
 
@@ -191,6 +191,13 @@ class AuthController extends Controller
             return;
         }
 
+        if (strlen($password) < 8) {
+            $this->renderAuth('register', 'Register Account', [
+                'error' => 'Password must be at least 8 characters long.',
+            ]);
+            return;
+        }
+
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $this->renderAuth('register', 'Register Account', [
                 'error' => 'Invalid email address format.',
@@ -275,7 +282,8 @@ class AuthController extends Controller
             ]);
 
             // 3. Create User
-            $passwordHash = password_hash($password, PASSWORD_BCRYPT);
+            $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
+            $passwordHash = password_hash($password, $algo);
             $userId = User::create([
                 'email' => $email,
                 'username' => $username,
@@ -317,7 +325,7 @@ class AuthController extends Controller
             // 7. Initialize Presence record
             UserPresence::initialize($userId);
 
-            // 8. Create Default '#general', '#announcements' and '#development-announcements' channels
+            // 8. Create Default '#general' and '#announcements' channels
             $defaultChannelsData = [
                 [
                     'slug' => 'general',
@@ -329,12 +337,6 @@ class AuthController extends Controller
                     'slug' => 'announcements',
                     'name' => 'announcements',
                     'description' => 'Workspace announcements, news, and notifications.',
-                    'is_default' => 1
-                ],
-                [
-                    'slug' => 'development-announcements',
-                    'name' => 'development-announcements',
-                    'description' => 'Announcements related to product development, updates, and releases.',
                     'is_default' => 1
                 ]
             ];

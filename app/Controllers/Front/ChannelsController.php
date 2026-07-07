@@ -41,12 +41,30 @@ class ChannelsController extends FrontController
             $channelIntId = (int)($resolved['active_channel']['id'] ?? 0);
             
             // Fetch current user's role in the channel
-            $stmt = \App\Core\Model::db()->prepare("
-                SELECT role FROM channel_members
-                WHERE channel_id = ? AND workspace_member_id = ? AND left_at IS NULL
-            ");
-            $stmt->execute([$channelIntId, $memberId]);
-            $currentUserChannelRole = $stmt->fetchColumn() ?: 'member';
+            $currentUserChannelRole = false;
+            if ($channelIntId > 0) {
+                $stmt = \App\Core\Model::db()->prepare("
+                    SELECT role FROM channel_members
+                    WHERE channel_id = ? AND workspace_member_id = ? AND left_at IS NULL
+                ");
+                $stmt->execute([$channelIntId, $memberId]);
+                $currentUserChannelRole = $stmt->fetchColumn();
+            }
+
+            if ($channelIntId > 0 && $currentUserChannelRole === false) {
+                // Not a member of this channel!
+                if ($this->isNavigateRequest()) {
+                    $this->index(null);
+                    return;
+                } else {
+                    $this->redirect('/channels');
+                    return;
+                }
+            }
+
+            if ($currentUserChannelRole === false) {
+                $currentUserChannelRole = 'member';
+            }
 
             $pendingRequests = ($isCreator || $isAdmin) 
                 ? ChannelJoinRequest::getPendingByChannel($channelIntId, $workspaceId) 

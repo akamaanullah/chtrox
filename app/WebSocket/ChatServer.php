@@ -19,6 +19,12 @@ class ChatServer implements MessageComponentInterface
     /** @var array<int, array<string, ConnectionInterface>> Maps workspace_member_id -> [resourceId => connection] */
     protected array $memberConnections = [];
 
+    /** @var array<int, array<string, ConnectionInterface>> Maps user_id -> [resourceId => connection] */
+    protected array $userConnections = [];
+
+    /** @var array<int, array<string, ConnectionInterface>> Maps workspace_id -> [resourceId => connection] */
+    protected array $workspaceConnections = [];
+
     /** @var array<int, array<string, mixed>> Cache of conversation_id -> ['expires' => int, 'members' => array<int>] */
     protected array $conversationMembersCache = [];
 
@@ -60,154 +66,236 @@ class ChatServer implements MessageComponentInterface
                 'workspace_member_id' => (int)$session['workspace_member_id'],
                 'workspace_id' => (int)$session['workspace_id'],
                 'role' => $session['role'],
-                'avatar' => $session['avatar_path']
+                'avatar' => $session['avatar_path'],
+                'session_token' => $session['session_token']
             ];
 
+            $userId = (int)$session['user_id'];
             $memberId = (int)$session['workspace_member_id'];
-            $this->memberConnections[$memberId][$conn->resourceId] = $conn;
+            $workspaceId = (int)$session['workspace_id'];
 
-            // Mark user as online in DB
-            $this->updateUserPresence((int)$session['user_id'], 'online');
+            $this->memberConnections[$memberId][$conn->resourceId] = $conn;
+            $this->userConnections[$userId][$conn->resourceId] = $conn;
+            $this->workspaceConnections[$workspaceId][$conn->resourceId] = $conn;
+
+            // Get user's preferred status from user_presence table to preserve away/dnd choices
+            $db = \App\Core\Database::connection();
+            $stmtStatus = $db->prepare("SELECT preferred_status FROM user_presence WHERE user_id = ?");
+            $stmtStatus->execute([$userId]);
+            $preferredStatus = $stmtStatus->fetchColumn();
+            
+            $statusToSet = 'online';
+            if ($preferredStatus === 'away' || $preferredStatus === 'dnd') {
+                $statusToSet = $preferredStatus;
+            }
+
+            // Mark user status in DB
+            $this->updateUserPresence($userId, $statusToSet);
 
             // Auto-subscribe to ALL conversations (DMs + channels) so messages arrive in real-time
             // even when the user is not actively viewing that specific conversation.
-            $this->subscribeClientToAllConversations($conn, (int)$session['workspace_member_id']);
+            $this->subscribeClientToAllConversations($conn, $memberId);
 
             // Mark offline-period messages as delivered and notify senders in real-time
-            $this->deliverPendingMessages((int)$session['workspace_member_id']);
+            $this->deliverPendingMessages($memberId);
 
             // Broadcast presence change to workspace members
-            $this->broadcastPresence((int)$session['workspace_id'], (int)$session['workspace_member_id'], 'online');
+            $this->broadcastPresence($workspaceId, $memberId, $statusToSet);
 
         } catch (\Exception $e) {
-            echo "⚠️ onOpen error: " . $e->getMessage() . "\n";
-            $conn->send(json_encode(['error' => 'Server error during connection setup']));
+            echo "⚠️ onOpen error: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine() . "\n";
+            $conn->send(json_encode(['error' => 'Connection failed. Please try again.']));
             $conn->close();
         }
     }
 
     public function onMessage(ConnectionInterface $from, $msg): void
     {
-        $clientData = $this->clients[$from] ?? [];
-        if (empty($clientData)) {
-            return;
-        }
+        try {
+            $clientData = $this->clients[$from] ?? [];
+            if (empty($clientData)) {
+                return;
+            }
 
-        $payload = json_decode($msg, true);
-        if (!$payload || !isset($payload['action'])) {
-            return;
-        }
+            $payload = json_decode($msg, true);
+            if (!$payload || !isset($payload['action'])) {
+                return;
+            }
 
-        $action = $payload['action'];
-        $workspaceId = $clientData['workspace_id'];
-        $memberId = $clientData['workspace_member_id'];
+            $action = $payload['action'];
+            $workspaceId = $clientData['workspace_id'];
+            $memberId = $clientData['workspace_member_id'];
+            $userId = $clientData['user_id'];
 
-        switch ($action) {
-            case 'subscribe':
-                $convId = (int)($payload['conversation_id'] ?? 0);
-                if ($convId > 0 && $this->verifyConversationAccess($convId, $memberId)) {
-                    $this->subscriptions[$convId][$from->resourceId] = $from;
-                }
-                break;
-
-            case 'unsubscribe':
-                $convId = (int)($payload['conversation_id'] ?? 0);
-                if (isset($this->subscriptions[$convId][$from->resourceId])) {
-                    unset($this->subscriptions[$convId][$from->resourceId]);
-                }
-                break;
-
-            case 'broadcast':
-                $convId = (int)($payload['conversation_id'] ?? 0);
-                $event = $payload['event'] ?? '';
-                $eventData = $payload['data'] ?? [];
-
-                $hasAccess = false;
-                if ($convId > 0 && !empty($event)) {
-                    if ($event === 'new_message' && isset($eventData['sender_id']) && (int)$eventData['sender_id'] === $memberId) {
-                        $hasAccess = true;
-                    } else {
-                        $hasAccess = $this->verifyConversationAccess($convId, $memberId);
+            switch ($action) {
+                case 'subscribe':
+                    $convId = (int)($payload['conversation_id'] ?? 0);
+                    if ($convId > 0 && $this->verifyConversationAccess($convId, $memberId)) {
+                        $this->subscriptions[$convId][$from->resourceId] = $from;
                     }
-                }
+                    break;
 
-                if ($hasAccess) {
-                    // Send to everyone who has access to this conversation EXCEPT the sender connection
-                    $eventPayload = json_encode([
-                        'event' => $event,
-                        'conversation_id' => $convId,
-                        'data' => $eventData
-                    ]);
+                case 'unsubscribe':
+                    $convId = (int)($payload['conversation_id'] ?? 0);
+                    if (isset($this->subscriptions[$convId][$from->resourceId])) {
+                        unset($this->subscriptions[$convId][$from->resourceId]);
+                    }
+                    break;
 
-                    $memberIds = $this->getConversationMemberIds($convId);
-                    foreach ($memberIds as $mId) {
-                        $mId = (int)$mId;
-                        if (isset($this->memberConnections[$mId])) {
-                            foreach ($this->memberConnections[$mId] as $conn) {
-                                if ($conn->resourceId !== $from->resourceId) {
+                case 'broadcast':
+                    $convId = (int)($payload['conversation_id'] ?? 0);
+                    $event = $payload['event'] ?? '';
+                    $eventData = $payload['data'] ?? [];
+
+                    $allowedBroadcastEvents = [
+                        'new_message', 'message_edited', 'message_deleted',
+                        'typing_start', 'typing_stop', 'message_delivered', 'messages_read',
+                        'conversation_read', 'reaction_added', 'reaction_removed', 'message_reaction'
+                    ];
+                    if (!in_array($event, $allowedBroadcastEvents, true)) {
+                        break;
+                    }
+
+                    $hasAccess = false;
+                    if ($convId > 0 && !empty($event)) {
+                        if ($event === 'new_message' && isset($eventData['sender_id']) && (int)$eventData['sender_id'] === $memberId) {
+                            $hasAccess = true;
+                        } else {
+                            $hasAccess = $this->verifyConversationAccess($convId, $memberId);
+                        }
+                    }
+
+                    if ($hasAccess) {
+                        // Send to everyone who has access to this conversation EXCEPT the sender connection
+                        $eventPayload = json_encode([
+                            'event' => $event,
+                            'conversation_id' => $convId,
+                            'data' => $eventData
+                        ]);
+
+                        $memberIds = $this->getConversationMemberIds($convId);
+                        foreach ($memberIds as $mId) {
+                            $mId = (int)$mId;
+                            if (isset($this->memberConnections[$mId])) {
+                                foreach ($this->memberConnections[$mId] as $conn) {
+                                    if ($conn->resourceId !== $from->resourceId) {
+                                        $conn->send($eventPayload);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    break;
+
+                case 'notify_members':
+                    $targetMemberIds = array_map('intval', $payload['member_ids'] ?? []);
+                    $event = $payload['event'] ?? '';
+                    $eventData = $payload['data'] ?? [];
+
+                    $allowedEvents = [
+                        'typing', 'stop_typing', 'message_delivered', 'messages_read',
+                        'reaction_added', 'reaction_removed', 'new_notification',
+                        'home_dashboard_update', 'nav_badge_update',
+                        'channel_join_request', 'channel_join_request_approved', 'channel_join_request_rejected'
+                    ];
+                    if (!in_array($event, $allowedEvents, true)) {
+                        break;
+                    }
+
+                    if (!empty($targetMemberIds) && !empty($event)) {
+                        $targetMemberIds = array_filter($targetMemberIds, function(int $tId) use ($workspaceId) {
+                            if (!isset($this->memberConnections[$tId])) {
+                                return false;
+                            }
+                            foreach ($this->memberConnections[$tId] as $conn) {
+                                $data = $this->clients[$conn] ?? [];
+                                if (($data['workspace_id'] ?? 0) === $workspaceId) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        });
+                    }
+
+                    if (!empty($targetMemberIds) && !empty($event)) {
+                        $eventPayload = json_encode([
+                            'event' => $event,
+                            'data' => $eventData
+                        ]);
+
+                        foreach ($targetMemberIds as $tId) {
+                            if (isset($this->memberConnections[$tId])) {
+                                foreach ($this->memberConnections[$tId] as $conn) {
+                                    // Send to all connections of this member
                                     $conn->send($eventPayload);
                                 }
                             }
                         }
                     }
-                }
-                break;
+                    break;
 
-            case 'notify_members':
-                $targetMemberIds = array_map('intval', $payload['member_ids'] ?? []);
-                $event = $payload['event'] ?? '';
-                $eventData = $payload['data'] ?? [];
-
-                if (!empty($targetMemberIds) && !empty($event)) {
-                    $eventPayload = json_encode([
-                        'event' => $event,
-                        'data' => $eventData
-                    ]);
-
-                    foreach ($targetMemberIds as $tId) {
-                        if (isset($this->memberConnections[$tId])) {
-                            foreach ($this->memberConnections[$tId] as $conn) {
-                                // Send to all connections of this member
-                                $conn->send($eventPayload);
-                            }
-                        }
+                case 'presence_change':
+                    $status = trim((string)($payload['status'] ?? ''));
+                    if (in_array($status, ['online', 'away', 'dnd', 'offline'], true)) {
+                        $this->updateUserPresence($userId, $status);
+                        $this->broadcastPresence($workspaceId, $memberId, $status);
                     }
-                }
-                break;
+                    break;
+            }
+        } catch (\Exception $e) {
+            echo "⚠️ onMessage error: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";
         }
     }
 
     public function onClose(ConnectionInterface $conn): void
     {
-        $clientData = $this->clients[$conn] ?? [];
-        
-        // Remove subscriptions
-        foreach ($this->subscriptions as $convId => $subList) {
-            if (isset($subList[$conn->resourceId])) {
-                unset($this->subscriptions[$convId][$conn->resourceId]);
-            }
-        }
-
-        // Detach client
-        $this->clients->detach($conn);
-
-        if (!empty($clientData)) {
-            $userId = $clientData['user_id'];
-            $workspaceId = $clientData['workspace_id'];
-            $memberId = (int)$clientData['workspace_member_id'];
-
-            if (isset($this->memberConnections[$memberId][$conn->resourceId])) {
-                unset($this->memberConnections[$memberId][$conn->resourceId]);
-                if (empty($this->memberConnections[$memberId])) {
-                    unset($this->memberConnections[$memberId]);
+        try {
+            $clientData = $this->clients[$conn] ?? [];
+            
+            // Remove subscriptions
+            foreach ($this->subscriptions as $convId => $subList) {
+                if (isset($subList[$conn->resourceId])) {
+                    unset($this->subscriptions[$convId][$conn->resourceId]);
                 }
             }
 
-            // Check if user has any other active websocket connections open
-            if (!$this->hasActiveConnections($userId)) {
-                $this->updateUserPresence($userId, 'offline');
-                $this->broadcastPresence($workspaceId, $memberId, 'offline');
+            // Detach client
+            $this->clients->detach($conn);
+
+            if (!empty($clientData)) {
+                $userId = $clientData['user_id'];
+                $workspaceId = $clientData['workspace_id'];
+                $memberId = (int)$clientData['workspace_member_id'];
+
+                if (isset($this->memberConnections[$memberId][$conn->resourceId])) {
+                    unset($this->memberConnections[$memberId][$conn->resourceId]);
+                    if (empty($this->memberConnections[$memberId])) {
+                        unset($this->memberConnections[$memberId]);
+                    }
+                }
+
+                if (isset($this->userConnections[$userId][$conn->resourceId])) {
+                    unset($this->userConnections[$userId][$conn->resourceId]);
+                    if (empty($this->userConnections[$userId])) {
+                        unset($this->userConnections[$userId]);
+                    }
+                }
+
+                if (isset($this->workspaceConnections[$workspaceId][$conn->resourceId])) {
+                    unset($this->workspaceConnections[$workspaceId][$conn->resourceId]);
+                    if (empty($this->workspaceConnections[$workspaceId])) {
+                        unset($this->workspaceConnections[$workspaceId]);
+                    }
+                }
+
+                // Check if user has any other active websocket connections open
+                if (!$this->hasActiveConnections($userId)) {
+                    $this->updateUserPresence($userId, 'offline');
+                    $this->broadcastPresence($workspaceId, $memberId, 'offline');
+                }
             }
+        } catch (\Exception $e) {
+            echo "⚠️ onClose error: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";
         }
     }
 
@@ -222,24 +310,14 @@ class ChatServer implements MessageComponentInterface
      */
     protected function authenticateToken(string $token, int $workspaceId = 0): ?array
     {
-        $db = \App\Core\Database::connection();
-        $query = "
-            SELECT us.*, u.id AS user_id, u.username, u.first_name, u.last_name, u.avatar_path,
-                   wm.id AS workspace_member_id, wm.workspace_id, wm.role
-            FROM user_sessions us
-            JOIN users u ON u.id = us.user_id
-            JOIN workspace_members wm ON wm.user_id = u.id AND wm.left_at IS NULL AND wm.status = 'active'
-            WHERE us.session_token = ? AND us.revoked_at IS NULL
-        ";
-        $params = [$token];
-        if ($workspaceId > 0) {
-            $query .= " AND wm.workspace_id = ?";
-            $params[] = $workspaceId;
+        $info = \App\Models\WebSocketTicket::consumeTicket($token);
+        if (!$info) {
+            return null;
         }
-        $stmt = $db->prepare($query);
-        $stmt->execute($params);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ?: null;
+        if ($workspaceId > 0 && (int)$info['workspace_id'] !== $workspaceId) {
+            return null;
+        }
+        return $info;
     }
 
     /**
@@ -279,12 +357,21 @@ class ChatServer implements MessageComponentInterface
     protected function updateUserPresence(int $userId, string $status): void
     {
         $db = \App\Core\Database::connection();
-        $stmt = $db->prepare("
-            INSERT INTO user_presence (user_id, status, last_seen_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
-            ON DUPLICATE KEY UPDATE status = VALUES(status), last_seen_at = CURRENT_TIMESTAMP
-        ");
-        $stmt->execute([$userId, $status]);
+        if ($status === 'offline') {
+            $stmt = $db->prepare("
+                INSERT INTO user_presence (user_id, status, last_seen_at)
+                VALUES (?, 'offline', CURRENT_TIMESTAMP)
+                ON DUPLICATE KEY UPDATE status = 'offline', last_seen_at = CURRENT_TIMESTAMP
+            ");
+            $stmt->execute([$userId]);
+        } else {
+            $stmt = $db->prepare("
+                INSERT INTO user_presence (user_id, status, preferred_status, last_seen_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON DUPLICATE KEY UPDATE status = VALUES(status), preferred_status = VALUES(preferred_status), last_seen_at = CURRENT_TIMESTAMP
+            ");
+            $stmt->execute([$userId, $status, $status]);
+        }
 
         // Also update last_active_at in workspace_members
         $stmt = $db->prepare("
@@ -300,13 +387,7 @@ class ChatServer implements MessageComponentInterface
      */
     protected function hasActiveConnections(int $userId): bool
     {
-        foreach ($this->clients as $clientConn) {
-            $data = $this->clients[$clientConn];
-            if (isset($data['user_id']) && $data['user_id'] === $userId) {
-                return true;
-            }
-        }
-        return false;
+        return !empty($this->userConnections[$userId]);
     }
 
     /**
@@ -322,9 +403,8 @@ class ChatServer implements MessageComponentInterface
             ]
         ]);
 
-        foreach ($this->clients as $clientConn) {
-            $data = $this->clients[$clientConn];
-            if (isset($data['workspace_id']) && $data['workspace_id'] === $workspaceId) {
+        if (isset($this->workspaceConnections[$workspaceId])) {
+            foreach ($this->workspaceConnections[$workspaceId] as $clientConn) {
                 $clientConn->send($payload);
             }
         }
@@ -491,6 +571,73 @@ class ChatServer implements MessageComponentInterface
             if (isset($data['workspace_member_id']) && (int)$data['workspace_member_id'] === $senderMemberId) {
                 $conn->send($payload);
             }
+        }
+    }
+
+    /**
+     * Periodically revalidate connected clients against active sessions in database.
+     */
+    public function revalidateActiveSessions(): void
+    {
+        $db = \App\Core\Database::connection();
+        $invalidConns = [];
+
+        $tokensToConnections = [];
+        foreach ($this->clients as $conn) {
+            $data = $this->clients[$conn] ?? [];
+            if (empty($data['session_token'])) {
+                $invalidConns[] = $conn;
+                continue;
+            }
+            $tokensToConnections[$data['session_token']][] = $conn;
+        }
+
+        if (!empty($tokensToConnections)) {
+            $tokens = array_keys($tokensToConnections);
+            $placeholders = implode(',', array_fill(0, count($tokens), '?'));
+            
+            $stmt = $db->prepare("
+                SELECT session_token 
+                FROM user_sessions 
+                WHERE session_token IN ($placeholders) 
+                  AND revoked_at IS NULL
+            ");
+            $stmt->execute($tokens);
+            $validTokens = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+            
+            $validTokensSet = array_flip($validTokens);
+            foreach ($tokensToConnections as $token => $conns) {
+                if (!isset($validTokensSet[$token])) {
+                    foreach ($conns as $conn) {
+                        $invalidConns[] = $conn;
+                    }
+                }
+            }
+        }
+
+        // Close all invalid connections
+        foreach ($invalidConns as $conn) {
+            echo "🔌 Closing connection for resource #{$conn->resourceId} due to revoked/invalid session token.\n";
+            $conn->send(json_encode(['error' => 'Session expired or revoked']));
+            $conn->close();
+        }
+    }
+
+    /**
+     * Prune expired conversation members cache entries.
+     */
+    public function pruneExpiredCache(): void
+    {
+        $now = time();
+        $pruned = 0;
+        foreach ($this->conversationMembersCache as $convId => $cached) {
+            if ($now >= $cached['expires']) {
+                unset($this->conversationMembersCache[$convId]);
+                $pruned++;
+            }
+        }
+        if ($pruned > 0) {
+            echo "🧹 Pruned {$pruned} expired conversation members cache entries.\n";
         }
     }
 }

@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     members: checkedMembers
                 };
 
-                fetch(window.CHATROX.baseUrl + '/api/channels/create', {
+                fetch(window.CHATROX.apiUrl + '/channels', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

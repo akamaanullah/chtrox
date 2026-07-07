@@ -56,10 +56,14 @@ DROP TABLE IF EXISTS message_user_deletions;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS conversation_participants;
 DROP TABLE IF EXISTS conversations;
+DROP TABLE IF EXISTS channel_join_requests;
 DROP TABLE IF EXISTS channel_members;
 DROP TABLE IF EXISTS channels;
 DROP TABLE IF EXISTS workspace_invites;
 DROP TABLE IF EXISTS password_reset_tokens;
+DROP TABLE IF EXISTS rate_limits;
+DROP TABLE IF EXISTS system_cache;
+DROP TABLE IF EXISTS websocket_tickets;
 DROP TABLE IF EXISTS user_presence;
 DROP TABLE IF EXISTS user_sessions;
 DROP TABLE IF EXISTS user_security;
@@ -376,6 +380,7 @@ CREATE TABLE messages (
     created_at                  TIMESTAMP(3)    NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     PRIMARY KEY (id),
     KEY idx_messages_conv_id (conversation_id, id DESC),
+    KEY idx_messages_conv_deleted (conversation_id, deleted_for_everyone_at, id DESC),
     KEY idx_messages_conv_unread (conversation_id, id, created_at),                   -- CHANGED: composite index for unread count vs read cursor
     KEY idx_messages_workspace_created (workspace_id, created_at),
     KEY idx_messages_sender (sender_id, created_at DESC),
@@ -661,6 +666,39 @@ CREATE TABLE announcements (
     CONSTRAINT fk_announcements_created_by
         FOREIGN KEY (created_by) REFERENCES workspace_members (id)
         ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- 6b. Rate Limiting & System Cache & WebSocket Tickets
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE rate_limits (
+    `key`       VARCHAR(128) NOT NULL,
+    hits        INT UNSIGNED NOT NULL DEFAULT 1,
+    expires_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`key`),
+    KEY idx_rate_limits_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE system_cache (
+    `key`       VARCHAR(255) NOT NULL,
+    `value`     LONGTEXT NOT NULL,
+    expires_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`key`),
+    KEY idx_system_cache_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE websocket_tickets (
+    ticket                VARCHAR(64) NOT NULL,
+    session_token         VARCHAR(128) NOT NULL,
+    user_id               BIGINT UNSIGNED NOT NULL,
+    workspace_member_id   BIGINT UNSIGNED NOT NULL,
+    workspace_id          BIGINT UNSIGNED NOT NULL,
+    expires_at            TIMESTAMP NOT NULL,
+    PRIMARY KEY (ticket),
+    KEY idx_ws_tickets_expires (expires_at),
+    CONSTRAINT fk_ws_tickets_user FOREIGN KEY (user_id) REFERENCES users (id)
+        ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------

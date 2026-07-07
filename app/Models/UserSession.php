@@ -15,21 +15,27 @@ class UserSession extends Model
             VALUES (:user_id, :session_token, :device_name, :ip_address, :user_agent)
         ');
         $deviceName = self::getDeviceName();
-        $ip = null;
-        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            $ips = array_map('trim', explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']));
-            foreach ($ips as $candidate) {
-                if (filter_var($candidate, FILTER_VALIDATE_IP)) {
-                    $ip = $candidate;
-                    break;
+
+        // Determine client IP respecting trusted proxy config
+        $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        if ($remoteAddr !== null && !filter_var($remoteAddr, FILTER_VALIDATE_IP)) {
+            $remoteAddr = null;
+        }
+        $ip = $remoteAddr;
+
+        $trustedProxies = defined('TRUSTED_PROXIES') ? TRUSTED_PROXIES : [];
+        if (!empty($trustedProxies) && $remoteAddr !== null && in_array($remoteAddr, $trustedProxies, true)) {
+            if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+                $ips = array_map('trim', explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']));
+                foreach ($ips as $candidate) {
+                    if (filter_var($candidate, FILTER_VALIDATE_IP)) {
+                        $ip = $candidate;
+                        break;
+                    }
                 }
             }
         }
-        if ($ip === null && !empty($_SERVER['REMOTE_ADDR'])) {
-            if (filter_var($_SERVER['REMOTE_ADDR'], FILTER_VALIDATE_IP)) {
-                $ip = $_SERVER['REMOTE_ADDR'];
-            }
-        }
+
         $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
 
         $stmt->execute([
@@ -54,14 +60,33 @@ class UserSession extends Model
 
     public static function isValid(string $token): bool
     {
-        $stmt = self::db()->prepare('
-            SELECT COUNT(*) 
+        $db = self::db();
+        $stmt = $db->prepare('
+            SELECT id, last_seen_at 
             FROM user_sessions 
             WHERE session_token = ? AND revoked_at IS NULL
+            LIMIT 1
         ');
         $stmt->execute([$token]);
-        return (int) $stmt->fetchColumn() > 0;
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            return false;
+        }
+
+        // Update last_seen_at at most once every hour to minimize database writes
+        if (time() - strtotime($row['last_seen_at']) > 3600) {
+            $updateStmt = $db->prepare('
+                UPDATE user_sessions 
+                SET last_seen_at = NOW() 
+                WHERE id = ?
+            ');
+            $updateStmt->execute([$row['id']]);
+        }
+
+        return true;
     }
+
 
     private static function getDeviceName(): string
     {
@@ -85,16 +110,16 @@ class UserSession extends Model
             $os = 'Android';
         }
 
-        if (preg_match('/chrome/i', $userAgent)) {
+        if (preg_match('/edg|edge/i', $userAgent)) {
+            $browser = 'Edge';
+        } elseif (preg_match('/opr|opera/i', $userAgent)) {
+            $browser = 'Opera';
+        } elseif (preg_match('/chrome/i', $userAgent)) {
             $browser = 'Chrome';
         } elseif (preg_match('/firefox/i', $userAgent)) {
             $browser = 'Firefox';
         } elseif (preg_match('/safari/i', $userAgent)) {
             $browser = 'Safari';
-        } elseif (preg_match('/edge/i', $userAgent)) {
-            $browser = 'Edge';
-        } elseif (preg_match('/opera|opr/i', $userAgent)) {
-            $browser = 'Opera';
         }
 
         return "{$browser} on {$os}";

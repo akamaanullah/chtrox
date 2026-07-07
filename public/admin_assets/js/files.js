@@ -163,40 +163,70 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- AJAX Utility ---
+    function adminAjax(url, method, data) {
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        if (window.CHATROX_ADMIN && window.CHATROX_ADMIN.csrfToken) {
+            headers['X-CSRF-Token'] = window.CHATROX_ADMIN.csrfToken;
+        }
+        return fetch(window.CHATROX_ADMIN.baseUrl + url, {
+            method: method,
+            headers: headers,
+            body: JSON.stringify(data)
+        }).then(res => {
+            return res.json().then(json => {
+                if (!res.ok) {
+                    throw new Error(json.error || 'Server error');
+                }
+                return json;
+            });
+        });
+    }
+
     // Global Click Listener for Actions and Previews
     document.addEventListener('click', (e) => {
         const actionBtn = e.target.closest('.action-btn');
         const mediaCard = e.target.closest('.media-item');
         
         if (actionBtn) {
-            const fileName = actionBtn.closest('.file-card, .file-row').querySelector('.file-name, .text-dark').textContent;
+            const fileRowOrCard = actionBtn.closest('.file-card, .file-row');
+            const fileName = fileRowOrCard ? fileRowOrCard.dataset.name : '';
             
             if (actionBtn.classList.contains('delete')) {
-                window.ChatroxUtils.showToast(`${fileName} deleted successfully!`, 'success');
+                const fileId = actionBtn.dataset.id;
+                if (confirm(`Are you sure you want to delete "${fileName}"?`)) {
+                    adminAjax('/api/admin/files', 'DELETE', { id: fileId })
+                        .then(res => {
+                            window.location.reload();
+                        })
+                        .catch(err => {
+                            alert(err.message);
+                        });
+                }
                 return;
             }
 
-            if (actionBtn.title === 'Preview') {
+            if (actionBtn.classList.contains('js-preview-media') || actionBtn.title === 'Preview') {
                 const target = actionBtn.closest('.media-item');
                 if (target) {
                     const allMedia = Array.from(document.querySelectorAll('.media-item'))
                         .filter(el => el.style.display !== 'none')
-                        .map(el => ({
-                            src: el.querySelector('img').src,
-                            name: el.querySelector('.file-name').textContent,
-                            category: el.dataset.category
-                        }));
+                        .map(el => {
+                            const btn = el.querySelector('.js-preview-media');
+                            return {
+                                src: btn.dataset.url,
+                                name: el.dataset.name,
+                                category: btn.dataset.type === 'video' ? 'videos' : 'images'
+                            };
+                        });
                     
-                    const index = allMedia.findIndex(m => m.name === target.querySelector('.file-name').textContent);
+                    const index = allMedia.findIndex(m => m.name === target.dataset.name);
                     if (index !== -1) {
                         openLightbox(index, allMedia);
                     }
                 }
-                return;
-            }
-            
-            if (actionBtn.title === 'Download') {
-                window.ChatroxUtils.showToast(`Starting download: ${fileName}`, 'info');
                 return;
             }
         }
@@ -205,13 +235,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mediaCard && !e.target.closest('.file-actions-overlay')) {
             const allMedia = Array.from(document.querySelectorAll('.media-item'))
                 .filter(el => el.style.display !== 'none')
-                .map(el => ({
-                    src: el.querySelector('img').src,
-                    name: el.querySelector('.file-name').textContent,
-                    category: el.dataset.category
-                }));
+                .map(el => {
+                    const btn = el.querySelector('.js-preview-media');
+                    return {
+                        src: btn.dataset.url,
+                        name: el.dataset.name,
+                        category: btn.dataset.type === 'video' ? 'videos' : 'images'
+                    };
+                });
             
-            const index = allMedia.findIndex(m => m.name === mediaCard.querySelector('.file-name').textContent);
+            const index = allMedia.findIndex(m => m.name === mediaCard.dataset.name);
             if (index !== -1) {
                 openLightbox(index, allMedia);
             }

@@ -41,6 +41,67 @@
             .join('<br>');
     }
 
+    function getCsrfToken() {
+        return window.CHATROX && window.CHATROX.csrfToken ? window.CHATROX.csrfToken : '';
+    }
+
+    function normalizeFetchInit(input, init) {
+        init = init || {};
+
+        var method = 'GET';
+        if (init.method) {
+            method = init.method.toString().toUpperCase();
+        } else if (input && input.method) {
+            method = input.method.toString().toUpperCase();
+        }
+
+        var headers = init.headers;
+        if (!headers && input && typeof Request !== 'undefined' && input instanceof Request) {
+            headers = new Headers(input.headers || {});
+        }
+        headers = headers || {};
+
+        if (method !== 'GET' && getCsrfToken()) {
+            if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+                headers.set('X-CSRF-Token', getCsrfToken());
+            } else if (Array.isArray(headers)) {
+                var tokenHeader = ['X-CSRF-Token', getCsrfToken()];
+                var filtered = headers.filter(function (pair) {
+                    return String(pair[0]).toLowerCase() !== 'x-csrf-token';
+                });
+                filtered.push(tokenHeader);
+                headers = filtered;
+            } else {
+                var normalizedHeaders = {};
+                for (var key in headers) {
+                    if (Object.prototype.hasOwnProperty.call(headers, key)) {
+                        normalizedHeaders[key] = headers[key];
+                    }
+                }
+                normalizedHeaders['X-CSRF-Token'] = getCsrfToken();
+                headers = normalizedHeaders;
+            }
+        }
+
+        init.headers = headers;
+        if (typeof init.credentials === 'undefined') {
+            init.credentials = 'same-origin';
+        }
+
+        return init;
+    }
+
+    function fetchWithCsrf(input, init) {
+        return window.originalFetch ? window.originalFetch(input, normalizeFetchInit(input, init)) : fetch(input, normalizeFetchInit(input, init));
+    }
+
+    if (window.fetch && !window.originalFetch) {
+        window.originalFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+            return window.originalFetch(input, normalizeFetchInit(input, init));
+        };
+    }
+
     window.ChatRoxText = {
         toPlain: toPlain,
         toSidebarPreview: function (html, maxLen) {
@@ -196,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         btn.disabled = true;
 
-        fetch(window.CHATROX.baseUrl + '/api/channels/join', {
+        fetch(window.CHATROX.apiUrl + '/channels/join', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -214,7 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 var label = data.requested ? 'Requested' : 'Joined';
                 var span = document.createElement('span');
-                span.className = 'btn-joined';
+                span.className = 'btn-joined' + (data.requested ? ' btn-requested' : '');
                 span.textContent = label;
                 btn.replaceWith(span);
 
@@ -230,6 +291,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.ChatRoxDialog.alert('Unable to send your request. Please try again.', 'Error');
                 btn.disabled = false;
             });
+    });
+
+    document.addEventListener('input', function (e) {
+        var searchInput = e.target.closest('.js-search-browse-channels');
+        if (!searchInput) return;
+
+        var q = searchInput.value.toLowerCase().trim();
+        var rows = document.querySelectorAll('#allChannelsList .channel-row');
+        var visibleCount = 0;
+
+        rows.forEach(function (row) {
+            var nameEl = row.querySelector('.channel-row-info h3');
+            var name = nameEl ? nameEl.textContent.toLowerCase() : '';
+            var descEl = row.querySelector('.channel-row-info .channel-meta');
+            var desc = descEl ? descEl.textContent.toLowerCase() : '';
+
+            var match = name.indexOf(q) !== -1 || desc.indexOf(q) !== -1;
+            row.style.display = match ? 'flex' : 'none';
+            if (match) {
+                visibleCount++;
+            }
+        });
+
+        var emptyState = document.getElementById('allChannelsEmpty');
+        if (emptyState) {
+            emptyState.style.display = (visibleCount === 0) ? 'block' : 'none';
+        }
     });
 
 });

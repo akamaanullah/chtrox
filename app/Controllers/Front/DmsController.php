@@ -12,12 +12,20 @@ class DmsController extends FrontController
     {
         $withId = $with ?? '';
         $memberId = (int)(Session::user()['workspace_member_id'] ?? 0);
+        $workspaceId = (int)(Session::user()['workspace_id'] ?? 0);
         $viewData = [
-            'dm_sidebar_items' => DmsConversation::sidebarDisplayItems(),
+            'dm_sidebar_items' => DmsConversation::sidebarDisplayItems($withId),
             'active_with' => $withId,
             'dm_welcome_cards' => DmsConversation::welcomeCards(),
             'forward_targets' => ForwardTarget::list(),
         ];
+
+        file_put_contents(ROOT_DIR . '/dms_sidebar.log', sprintf(
+            "[%s] index called: with='%s', items=%s\n",
+            date('Y-m-d H:i:s'),
+            $withId,
+            json_encode(array_column($viewData['dm_sidebar_items'], 'id'))
+        ), FILE_APPEND);
 
         if ($withId !== '') {
             $resolved = DmsConversation::resolveUser($withId);

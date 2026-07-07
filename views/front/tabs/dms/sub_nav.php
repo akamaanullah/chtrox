@@ -6,7 +6,7 @@ use App\Core\View;
 <div class="sub-nav">
     <div class="sub-nav-header">
         <h2>DMS</h2>
-        <a href="people" class="circle-btn" title="New Message" style="text-decoration: none;">
+        <a href="<?php echo \App\Core\View::url('people'); ?>" class="circle-btn" title="New Message" style="text-decoration: none;">
             <i data-lucide="edit"></i>
         </a>
     </div>
@@ -20,8 +20,9 @@ use App\Core\View;
         <h4 class="section-label">DMS DIRECTORY</h4>
         <div class="dm-list">
             <?php foreach ($dm_sidebar_items as $item): ?>
-                <a href="dms/<?php echo htmlspecialchars($item['id']); ?>"
+                <a href="<?php echo \App\Core\View::url('dms/' . $item['id']); ?>"
                     data-dm-username="<?php echo htmlspecialchars($item['id']); ?>"
+                    data-member-id="<?php echo $item['member_id']; ?>"
                     data-conversation-id="<?php echo (int)($item['conversation_id'] ?? 0); ?>"
                     data-last-is-mine="<?php echo !empty($item['last_is_mine']) ? '1' : '0'; ?>"
                     data-last-read-status="<?php echo htmlspecialchars($item['read_status'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
@@ -30,7 +31,7 @@ use App\Core\View;
                     <div class="avatar-sm">
                         <img src="<?php echo htmlspecialchars($item['avatar']); ?>"
                             alt="<?php echo htmlspecialchars($item['name']); ?>">
-                        <span class="status-online"></span>
+                        <span class="presence-dot presence-dot--<?php echo htmlspecialchars($item['presence_status'] ?? 'offline'); ?>"></span>
                     </div>
                     <div class="dm-info">
                         <h5><?php echo htmlspecialchars($item['name']); ?></h5>

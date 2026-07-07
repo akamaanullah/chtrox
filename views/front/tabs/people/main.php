@@ -7,13 +7,13 @@
             <div class="aph-titles">
                 <span class="label-tiny text-primary">CORPORATE DIRECTORY</span>
                 <h3>Connect with Colleagues</h3>
-                <p class="aph-subtitle">Search through <?php echo (int) $people_count; ?> team members in Chatrox.</p>
+                <p class="aph-subtitle">Search through <?php echo (int) $people_count; ?> team members in ChatRox.</p>
             </div>
         </div>
         <div class="aph-right">
             <div class="search-box page-search-box">
                 <i data-lucide="search" size="18"></i>
-                <input type="text" placeholder="Search by name...">
+                <input type="text" id="peopleSearch" placeholder="Search by name...">
             </div>
         </div>
     </div>
@@ -38,10 +38,10 @@
                     </div>
                 </div>
 
-                <button type="button" class="btn-chat">
+                <a href="<?php echo \App\Core\View::url('dms/' . $contact['username']); ?>" class="btn-chat">
                     <i data-lucide="message-square" size="14"></i>
                     Chat
-                </button>
+                </a>
             </div>
         <?php endforeach; ?>
     </div>

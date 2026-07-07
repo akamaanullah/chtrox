@@ -5,6 +5,7 @@ namespace App\Controllers\Front\Api;
 use App\Core\Controller;
 use App\Core\Session;
 use App\Core\Model;
+use App\Helpers\FileUploadPolicy;
 
 class ProfileController extends Controller
 {
@@ -21,8 +22,11 @@ class ProfileController extends Controller
         $input = $this->getRequestInput();
         $theme = $input['theme'] ?? '';
 
-        $allowedThemes = ['indigo', 'rose', 'emerald', 'amber', 'slate'];
-        if (!in_array($theme, $allowedThemes)) {
+        $allowedThemes = [
+            'indigo', 'blue', 'violet', 'emerald', 'rose', 'sky',
+            'teal', 'amber', 'cyan', 'fuchsia', 'lime', 'orange'
+        ];
+        if (!in_array($theme, $allowedThemes, true)) {
             $this->jsonResponse(['error' => 'Invalid theme choice'], 400);
         }
 
@@ -104,7 +108,8 @@ class ProfileController extends Controller
             ]);
         } catch (\Exception $e) {
             $db->rollBack();
-            $this->jsonResponse(['error' => 'Database error: ' . $e->getMessage()], 500);
+            \App\Core\ErrorHandler::logError($e);
+            $this->jsonResponse(['error' => 'Failed to update profile. Please try again.'], 500);
         }
     }
 
@@ -127,8 +132,17 @@ class ProfileController extends Controller
         }
 
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+        $allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+        if (!in_array($ext, $allowedExtensions, true)) {
             $this->jsonResponse(['error' => 'Invalid image format. Supported: JPG, PNG, GIF, WEBP'], 400);
+        }
+
+        // Server-side MIME validation to prevent disguised uploads
+        $detectedMime = FileUploadPolicy::detectMime($file['tmp_name']);
+        if (!in_array($detectedMime, $allowedMimes, true)) {
+            $this->jsonResponse(['error' => 'File content does not match a valid image type.'], 400);
         }
 
         $avatarDir = ROOT_DIR . '/public/uploads/avatars';
@@ -140,7 +154,7 @@ class ProfileController extends Controller
         $destination = $avatarDir . '/' . $filename;
 
         if (move_uploaded_file($file['tmp_name'], $destination)) {
-            $avatarUrl = 'public/uploads/avatars/' . $filename;
+            $avatarUrl = 'uploads/avatars/' . $filename;
             
             $db = Model::db();
             $stmt = $db->prepare("UPDATE users SET avatar_path = ? WHERE id = ?");

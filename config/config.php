@@ -14,18 +14,34 @@ $dynamicBaseUrl = rtrim($protocol . '://' . $host . $basePath, '/');
 
 define('BASE_URL', $_ENV['BASE_URL'] ?? $dynamicBaseUrl);
 define('APP_NAME', $_ENV['APP_NAME'] ?? 'ChatRox');
-define('APP_DEBUG', filter_var($_ENV['APP_DEBUG'] ?? 'true', FILTER_VALIDATE_BOOLEAN));
-define('DEFAULT_AVATAR_URL', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150');
+// HIGH-12: Default APP_DEBUG to false, and force it to false if running in production
+$appEnv = strtolower($_ENV['APP_ENV'] ?? 'local');
+$appDebug = filter_var($_ENV['APP_DEBUG'] ?? 'false', FILTER_VALIDATE_BOOLEAN);
+if (($appEnv === 'production' || $appEnv === 'prod') && $appDebug) {
+    $appDebug = false;
+}
+define('APP_DEBUG', $appDebug);
+define('APP_ENV', $appEnv);
+define('DEFAULT_AVATAR_URL', BASE_URL . '/assets/images/default-avatar.svg');
 
 define('DB_HOST', $_ENV['DB_HOST'] ?? '127.0.0.1');
 define('DB_PORT', $_ENV['DB_PORT'] ?? '3306');
 define('DB_USER', $_ENV['DB_USERNAME'] ?? $_ENV['DB_USER'] ?? 'root');
 define('DB_PASS', $_ENV['DB_PASSWORD'] ?? $_ENV['DB_PASS'] ?? '');
 define('DB_NAME', $_ENV['DB_DATABASE'] ?? $_ENV['DB_NAME'] ?? '');
+define('DB_TIMEZONE', $_ENV['DB_TIMEZONE'] ?? '+05:00');
 
 define('GIPHY_API_KEY', $_ENV['GIPHY_API_KEY'] ?? '');
 
 define('MAX_FILE_SIZE_BYTES', (int)($_ENV['MAX_FILE_SIZE_MB'] ?? 40) * 1024 * 1024);
+
+// Trusted reverse proxy IPs. Only these IPs' X-Forwarded-For headers will be trusted.
+// Comma-separated list. Empty = trust no proxies (direct connection only).
+$trustedProxies = array_filter(array_map('trim', explode(',', $_ENV['TRUSTED_PROXIES'] ?? '')));
+define('TRUSTED_PROXIES', $trustedProxies);
+
+define('WS_PORT', (int)($_ENV['WS_PORT'] ?? 8088));
+define('WS_BIND', $_ENV['WS_BIND'] ?? '0.0.0.0');
 
 define('FRONT_ASSETS', [
     'global' => [
@@ -64,6 +80,12 @@ define('FRONT_ASSETS', [
     ],
     'files' => [
         'js/tabs/files/files.js',
+    ],
+    'settings' => [
+        'js/tabs/settings/settings.js',
+    ],
+    'people' => [
+        'js/tabs/people/people.js',
     ],
 ]);
 

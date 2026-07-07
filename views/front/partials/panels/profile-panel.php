@@ -59,75 +59,7 @@ $joinedChannels = $joinedChannels ?? [];
             <textarea class="profile-panel-textarea" id="profileBio" rows="3"
                 placeholder="Tell others about yourself..."><?php echo htmlspecialchars($currentUser['bio'] ?? ''); ?></textarea>
         </div>
-        <div class="profile-panel-field profile-panel-field--theme theme-collapsed" id="profileThemeField">
-            <div class="profile-panel-theme-header js-theme-color-toggle" role="button" tabindex="0"
-                title="Toggle theme options">
-                <span class="profile-panel-label">THEME COLOR</span>
-                <i data-lucide="chevron-up" size="16" class="theme-chevron"></i>
-            </div>
-            <div class="profile-panel-theme-options" id="profileThemeOptions">
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="indigo">
-                    <span class="theme-swatch theme-swatch--indigo"></span>
-                    <span class="theme-name">Indigo</span>
-                </label>
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="blue">
-                    <span class="theme-swatch theme-swatch--blue"></span>
-                    <span class="theme-name">Blue</span>
-                </label>
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="violet">
-                    <span class="theme-swatch theme-swatch--violet"></span>
-                    <span class="theme-name">Violet</span>
-                </label>
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="emerald">
-                    <span class="theme-swatch theme-swatch--emerald"></span>
-                    <span class="theme-name">Emerald</span>
-                </label>
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="rose">
-                    <span class="theme-swatch theme-swatch--rose"></span>
-                    <span class="theme-name">Rose</span>
-                </label>
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="sky">
-                    <span class="theme-swatch theme-swatch--sky"></span>
-                    <span class="theme-name">Sky</span>
-                </label>
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="teal">
-                    <span class="theme-swatch theme-swatch--teal"></span>
-                    <span class="theme-name">Teal</span>
-                </label>
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="amber">
-                    <span class="theme-swatch theme-swatch--amber"></span>
-                    <span class="theme-name">Amber</span>
-                </label>
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="cyan">
-                    <span class="theme-swatch theme-swatch--cyan"></span>
-                    <span class="theme-name">Cyan</span>
-                </label>
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="fuchsia">
-                    <span class="theme-swatch theme-swatch--fuchsia"></span>
-                    <span class="theme-name">Fuchsia</span>
-                </label>
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="lime">
-                    <span class="theme-swatch theme-swatch--lime"></span>
-                    <span class="theme-name">Lime</span>
-                </label>
-                <label class="theme-option">
-                    <input type="radio" name="theme_color" value="orange">
-                    <span class="theme-swatch theme-swatch--orange"></span>
-                    <span class="theme-name">Orange</span>
-                </label>
-            </div>
-        </div>
+
         <div class="profile-panel-field profile-panel-field--channels">
             <div class="profile-panel-channels-header">
                 <label class="profile-panel-label">Joined Channels</label>
@@ -158,10 +90,6 @@ $joinedChannels = $joinedChannels ?? [];
             </div>
         </div>
         <div class="profile-panel-actions">
-            <button type="button" class="profile-panel-btn profile-panel-btn--secondary">
-                <i data-lucide="key-round" size="16"></i>
-                Change password
-            </button>
             <a href="<?php echo \App\Core\View::url('logout'); ?>" class="profile-panel-btn profile-panel-btn--danger">
                 <i data-lucide="log-out" size="16"></i>
                 Logout

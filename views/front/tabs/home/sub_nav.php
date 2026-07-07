@@ -39,7 +39,7 @@ $progressLabel = $home_chat_card['progress_label'] ?? 'Inbox clear';
         <div class="sub-nav-group" data-home-group="dms">
             <div class="group-header">
                 <h4 class="section-label">DIRECT MESSAGES</h4>
-                <a href="dms" class="view-all">VIEW ALL</a>
+                <a href="<?php echo \App\Core\View::url('dms'); ?>" class="view-all">VIEW ALL</a>
             </div>
             <div class="mini-list" id="homeSidebarDms">
                 <?php if (empty($home_sidebar_dms)): ?>
@@ -51,7 +51,7 @@ $progressLabel = $home_chat_card['progress_label'] ?? 'Inbox clear';
                     </div>
                 <?php else: ?>
                     <?php foreach ($home_sidebar_dms as $dm): ?>
-                        <a href="dms/<?php echo htmlspecialchars($dm['id']); ?>" class="mini-item">
+                        <a href="<?php echo \App\Core\View::url('dms/' . $dm['id']); ?>" class="mini-item">
                             <div class="mini-avatar">
                                 <img src="<?php echo htmlspecialchars($dm['avatar']); ?>"
                                     alt="<?php echo htmlspecialchars($dm['name']); ?>">
@@ -72,7 +72,7 @@ $progressLabel = $home_chat_card['progress_label'] ?? 'Inbox clear';
         <div class="sub-nav-group" data-home-group="channels">
             <div class="group-header">
                 <h4 class="section-label">CHANNELS</h4>
-                <a href="browse-channels" class="view-all">EXPLORE</a>
+                <a href="<?php echo \App\Core\View::url('browse-channels'); ?>" class="view-all">EXPLORE</a>
             </div>
             <div class="mini-list" id="homeSidebarChannels">
                 <?php if (empty($home_sidebar_channels)): ?>
@@ -84,7 +84,7 @@ $progressLabel = $home_chat_card['progress_label'] ?? 'Inbox clear';
                     </div>
                 <?php else: ?>
                     <?php foreach ($home_sidebar_channels as $channel): ?>
-                        <a href="channels/<?php echo htmlspecialchars($channel['slug']); ?>" class="mini-item">
+                        <a href="<?php echo \App\Core\View::url('channels/' . $channel['slug']); ?>" class="mini-item">
                             <div class="mini-icon-box">#</div>
                             <div class="mini-info">
                                 <span class="mini-name"><?php echo htmlspecialchars($channel['name']); ?></span>

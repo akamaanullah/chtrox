@@ -59,6 +59,11 @@ class NavigateController extends FrontController
             return;
         }
 
+        if ($path === 'settings') {
+            (new \App\Controllers\Front\SettingsController())->index();
+            return;
+        }
+
         if ($path === 'browse-channels') {
             (new BrowseChannelsController())->index();
             return;

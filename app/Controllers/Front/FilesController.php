@@ -10,7 +10,7 @@ class FilesController extends FrontController
     public function index(): void
     {
         $this->renderApp('files', [
-            'workspace_files' => WorkspaceFile::all(),
+            'workspace_files' => [],
         ]);
     }
 
@@ -66,9 +66,12 @@ class FilesController extends FrontController
         $size = (int)filesize($physicalPath);
         $disposition = FileAccess::isInlineDisposition($mime, $extension) ? 'inline' : 'attachment';
 
+        $escapedName = str_replace(['"', "\r", "\n"], ['\\"', '', ''], $safeName);
+        $rfc5987Name = rawurlencode($safeName);
+
         header('Content-Description: File Transfer');
         header('Content-Type: ' . ($mime ?: 'application/octet-stream'));
-        header('Content-Disposition: ' . $disposition . '; filename="' . $safeName . '"');
+        header('Content-Disposition: ' . $disposition . '; filename="' . $escapedName . '"; filename*=UTF-8\'\'' . $rfc5987Name);
         header('X-Content-Type-Options: nosniff');
         header('Accept-Ranges: bytes');
         header('Cache-Control: private, max-age=3600');

@@ -9,12 +9,12 @@
         </div>
         <div class="modal-body">
             <div class="modal-scroll-area">
-                <p>Chatrox is a modern, real-time communication platform designed to bring teams together. Our mission
+                <p>ChatRox is a modern, real-time communication platform designed to bring teams together. Our mission
                     is to provide seamless collaboration tools that enhance productivity and foster meaningful
                     connections in the digital workplace.</p>
 
                 <h4>Who We Are</h4>
-                <p>Chatrox is a cutting-edge team communication platform built with modern web technologies. We
+                <p>ChatRox is a cutting-edge team communication platform built with modern web technologies. We
                     specialize in creating intuitive, real-time messaging solutions that help organizations stay
                     connected and productive.</p>
 
@@ -29,7 +29,7 @@
                     communication experience.</p>
 
                 <h4>Our Mission</h4>
-                <p>At Chatrox, we believe in the power of seamless communication to drive productivity and
+                <p>At ChatRox, we believe in the power of seamless communication to drive productivity and
                     collaboration. Our platform is designed to bring teams together, regardless of their location or
                     time zone. We're committed to providing intuitive, reliable, and feature-rich communication tools
                     that adapt to your team's unique needs and workflow.</p>
@@ -203,7 +203,7 @@
         <div class="modal-body">
             <div class="modal-scroll-area">
                 <p class="label-tiny">LAST UPDATED: FEBRUARY 2026</p>
-                <p>Chatrox ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains
+                <p>ChatRox ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains
                     how we collect, use, store, and protect your information when you use our workplace communication
                     platform.</p>
 
@@ -220,7 +220,7 @@
                 </ul>
 
                 <h4>How We Use Your Information</h4>
-                <p>We use your information to provide, maintain, and improve Chatrox; to deliver messages and
+                <p>We use your information to provide, maintain, and improve ChatRox; to deliver messages and
                     notifications; to enforce our terms and policies; to protect security; and to comply with legal
                     obligations. We do not sell your personal data.</p>
 
@@ -308,7 +308,7 @@
 
                 <div class="security-details-text">
                     <p>As part of our ongoing commitment to workspace security, we are rolling out two-factor
-                        authentication (2FA) across all Chatrox accounts. This applies to every team member—no
+                        authentication (2FA) across all ChatRox accounts. This applies to every team member—no
                         exceptions. Before the migration window, please install an authenticator app (Google
                         Authenticator, Microsoft Authenticator, or Authy) on your phone. On Friday at 6:00 PM you
                         will receive a prompt to link your account; the process takes about two minutes. If you have

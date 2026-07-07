@@ -47,7 +47,7 @@ class ErrorHandler
         }
     }
 
-    private static function logError(Throwable $exception): void
+    public static function logError(Throwable $exception): void
     {
         $logDir = ROOT_DIR . '/storage/logs';
 
@@ -59,12 +59,13 @@ class ErrorHandler
         $logFile = $logDir . '/error-' . date('Y-m-d') . '.log';
 
         $message = sprintf(
-            "[%s] %s: %s in %s on line %d\n",
+            "[%s] %s: %s in %s on line %d\nStack trace:\n%s\n--------------------------------------------------\n",
             date('Y-m-d H:i:s'),
             get_class($exception),
             $exception->getMessage(),
             $exception->getFile(),
-            $exception->getLine()
+            $exception->getLine(),
+            $exception->getTraceAsString()
         );
 
         error_log($message, 3, $logFile);

@@ -88,7 +88,7 @@ class WorkspaceSearch extends Model
                 'id' => $row['username'],
                 'title' => $row['display_name'],
                 'subtitle' => '@' . $row['username'],
-                'avatar' => $row['avatar_path'] ?: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150',
+                'avatar' => \App\Core\View::avatar($row['avatar_path']),
                 'url' => 'dms/' . $row['username'],
                 'online' => ($row['presence_status'] ?? '') === 'online',
             ];
@@ -106,22 +106,24 @@ class WorkspaceSearch extends Model
                    EXISTS (
                        SELECT 1 FROM channel_members cm
                        WHERE cm.channel_id = c.id
-                         AND cm.workspace_member_id = ?
+                         AND cm.workspace_member_id = :member_id
                          AND cm.left_at IS NULL
                    ) AS joined
             FROM channels c
-            WHERE c.workspace_id = ?
+            LEFT JOIN channel_members cm_check ON cm_check.channel_id = c.id
+                                             AND cm_check.workspace_member_id = :member_id
+                                             AND cm_check.left_at IS NULL
+            WHERE c.workspace_id = :workspace_id
               AND c.status = 'active'
-              AND (c.name LIKE ? ESCAPE '\\\\' OR c.slug LIKE ? ESCAPE '\\\\' OR c.description LIKE ? ESCAPE '\\\\')
+              AND (c.visibility = 'public' OR cm_check.id IS NOT NULL)
+              AND (c.name LIKE :query ESCAPE '\\\\' OR c.slug LIKE :query ESCAPE '\\\\' OR c.description LIKE :query ESCAPE '\\\\')
             ORDER BY joined DESC, c.name ASC
-            LIMIT ?
+            LIMIT :limit
         ");
-        $stmt->bindValue(1, $memberId, PDO::PARAM_INT);
-        $stmt->bindValue(2, $workspaceId, PDO::PARAM_INT);
-        $stmt->bindValue(3, $like);
-        $stmt->bindValue(4, $like);
-        $stmt->bindValue(5, $like);
-        $stmt->bindValue(6, $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':member_id', $memberId, PDO::PARAM_INT);
+        $stmt->bindValue(':workspace_id', $workspaceId, PDO::PARAM_INT);
+        $stmt->bindValue(':query', $like);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
 
         $items = [];
@@ -142,6 +144,29 @@ class WorkspaceSearch extends Model
     private static function searchMessages(int $workspaceId, int $memberId, string $query, int $limit, ?int $conversationId = null): array
     {
         $like = '%' . self::escapeLike($query) . '%';
+        $useFulltext = false;
+        $fulltextQuery = '';
+        if (mb_strlen($query) >= 3) {
+            $words = preg_split('/\s+/', $query);
+            $terms = [];
+            foreach ($words as $word) {
+                $word = trim($word);
+                // Clean punctuation for boolean search mode
+                $word = preg_replace('/[+\-><()~*\"@]+/', '', $word);
+                if ($word !== '') {
+                    $terms[] = '+' . $word . '*';
+                }
+            }
+            if (!empty($terms)) {
+                $fulltextQuery = implode(' ', $terms);
+                $useFulltext = true;
+            }
+        }
+
+        $searchCondition = $useFulltext 
+            ? "MATCH(m.body) AGAINST(:fulltext_query IN BOOLEAN MODE)" 
+            : "m.body LIKE :like ESCAPE '\\\\'";
+
         $sql = "
             SELECT
                 m.id,
@@ -183,7 +208,7 @@ class WorkspaceSearch extends Model
                   WHERE mud.message_id = m.id
                     AND mud.workspace_member_id = :member_id
               )
-              AND m.body LIKE :like ESCAPE '\\\\'
+              AND {$searchCondition}
               AND (
                   (c.type IN ('dm', 'group_dm') AND cp_self.id IS NOT NULL)
                   OR (c.type = 'channel' AND cm.id IS NOT NULL)
@@ -197,7 +222,11 @@ class WorkspaceSearch extends Model
         $stmt = self::db()->prepare($sql);
         $stmt->bindValue(':member_id', $memberId, PDO::PARAM_INT);
         $stmt->bindValue(':workspace_id', $workspaceId, PDO::PARAM_INT);
-        $stmt->bindValue(':like', $like);
+        if ($useFulltext) {
+            $stmt->bindValue(':fulltext_query', $fulltextQuery);
+        } else {
+            $stmt->bindValue(':like', $like);
+        }
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         if ($conversationId !== null) {
             $stmt->bindValue(':conversation_id', $conversationId, PDO::PARAM_INT);

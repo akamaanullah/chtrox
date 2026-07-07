@@ -29,216 +29,54 @@
             </tr>
         </thead>
         <tbody>
-            <!-- Row 1 -->
-            <tr class="activity-card-log" data-type="mention">
-                <td class="col-time">08/26/26, 4:21 pm</td>
-                <td class="col-status"><span class="status-badge complete">COMPLETE</span></td>
+<?php foreach ($activities as $act): ?>
+            <?php
+                $isSystem = empty($act['actor_member_id']);
+                $type = strtolower($act['activity_type']);
+                
+                $status = strtolower($act['status'] ?? 'complete');
+                $badgeClass = 'complete';
+                if ($status === 'failed') $badgeClass = 'failed';
+                elseif ($status === 'warning') $badgeClass = 'warning';
+            ?>
+            <tr class="activity-card-log" data-type="<?php echo $type; ?>">
+                <td class="col-time"><?php echo date('m/d/y, g:i a', strtotime($act['created_at'])); ?></td>
+                <td class="col-status"><span class="status-badge <?php echo $badgeClass; ?>"><?php echo strtoupper($status); ?></span></td>
                 <td class="col-member">
-                    <div class="member-info-mini">
-                        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150" alt="Emma" class="mini-avatar">
-                        <div class="member-text"><span class="m-name">Emma Williams</span><span class="m-handle">@emma_w</span></div>
-                    </div>
+                    <?php if ($isSystem): ?>
+                        <div class="member-info-mini">
+                            <div class="mini-avatar system zap" style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: #e0f2fe; color: #0284c7; margin-right: 8px;"><i data-lucide="zap" size="12"></i></div>
+                            <div class="member-text">
+                                <span class="m-name"><?php echo \App\Core\View::e($act['actor_label'] ?: 'System'); ?></span>
+                                <span class="m-handle">System</span>
+                            </div>
+                        </div>
+                    <?php else: ?>
+                        <div class="member-info-mini">
+                            <?php if ($act['avatar_path']): ?>
+                                <img src="<?php echo \App\Core\View::e($act['avatar_path']); ?>" alt="" class="mini-avatar" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover;">
+                            <?php else: ?>
+                                <div class="avatar-mini-circle" style="background: var(--indigo-100); color: var(--indigo-600); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; margin-right: 8px;">
+                                    <?php
+                                        $initials = '';
+                                        $names = explode(' ', $act['actor_label']);
+                                        foreach ($names as $n) { $initials .= strtoupper(substr($n, 0, 1)); }
+                                        echo \App\Core\View::e(substr($initials, 0, 2));
+                                    ?>
+                                </div>
+                            <?php endif; ?>
+                            <div class="member-text">
+                                <span class="m-name"><?php echo \App\Core\View::e($act['actor_label']); ?></span>
+                                <span class="m-handle">@<?php echo \App\Core\View::e($act['actor_handle'] ?: 'member'); ?></span>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 </td>
-                <td class="col-message">Mentioned you in #design-mockups: "Please review the latest dashboard iterations..."</td>
-                <td class="col-activity">Mention</td>
-                <td class="col-ip">192.168.1.45</td>
+                <td class="col-message"><?php echo \App\Core\View::e($act['message']); ?></td>
+                <td class="col-activity"><?php echo ucfirst(strtolower($act['activity_type'])); ?></td>
+                <td class="col-ip"><?php echo \App\Core\View::e($act['ip_address'] ?: '127.0.0.1'); ?></td>
             </tr>
-            <!-- Row 2 -->
-            <tr class="activity-card-log" data-type="file">
-                <td class="col-time">08/26/26, 4:01 pm</td>
-                <td class="col-status"><span class="status-badge complete">COMPLETE</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150" alt="Oliver" class="mini-avatar">
-                        <div class="member-text"><span class="m-name">Oliver Mitchell</span><span class="m-handle">@oliver_m</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Uploaded document: Q3_Strategy_v2.pdf (4.2 MB)</td>
-                <td class="col-activity">File Upload</td>
-                <td class="col-ip">103.255.44.12</td>
-            </tr>
-            <!-- Row 3 -->
-            <tr class="activity-card-log" data-type="security">
-                <td class="col-time">08/26/26, 2:01 pm</td>
-                <td class="col-status"><span class="status-badge failed">FAILED</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <div class="mini-avatar system security"><i data-lucide="shield-alert"></i></div>
-                        <div class="member-text"><span class="m-name">Security System</span><span class="m-handle">System</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Suspicious login attempt blocked from unauthorized device in London, UK.</td>
-                <td class="col-activity">Blocked Login</td>
-                <td class="col-ip">45.122.3.1</td>
-            </tr>
-            <!-- Row 4 -->
-            <tr class="activity-card-log" data-type="system">
-                <td class="col-time">08/26/26, 1:37 pm</td>
-                <td class="col-status"><span class="status-badge complete">COMPLETE</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <div class="mini-avatar system zap"><i data-lucide="zap"></i></div>
-                        <div class="member-text"><span class="m-name">System Update</span><span class="m-handle">Auto-Bot</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Deployment of v2.4.0 successfully completed on production environment.</td>
-                <td class="col-activity">Deployment</td>
-                <td class="col-ip">localhost</td>
-            </tr>
-            <!-- Row 5 -->
-            <tr class="activity-card-log" data-type="security">
-                <td class="col-time">Yesterday, 9:20 pm</td>
-                <td class="col-status"><span class="status-badge warning">WARNING</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=150" alt="John" class="mini-avatar">
-                        <div class="member-text"><span class="m-name">John Smith</span><span class="m-handle">@john_s</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Failed login attempt (Incorrect password) from unrecognized location.</td>
-                <td class="col-activity">Security</td>
-                <td class="col-ip">110.33.22.4</td>
-            </tr>
-            <!-- Row 6 -->
-            <tr class="activity-card-log" data-type="mention">
-                <td class="col-time">Yesterday, 5:45 pm</td>
-                <td class="col-status"><span class="status-badge complete">COMPLETE</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=150" alt="Avatar" class="mini-avatar">
-                        <div class="member-text"><span class="m-name">David Chen</span><span class="m-handle">@dchen</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Replied to your thread in #marketing: "The campaign analysis looks solid."</td>
-                <td class="col-activity">Reply</td>
-                <td class="col-ip">172.16.254.1</td>
-            </tr>
-            <!-- Row 7 -->
-            <tr class="activity-card-log" data-type="system">
-                <td class="col-time">Yesterday, 11:30 am</td>
-                <td class="col-status"><span class="status-badge complete">COMPLETE</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <div class="mini-avatar system zap"><i data-lucide="database"></i></div>
-                        <div class="member-text"><span class="m-name">Backup Service</span><span class="m-handle">System</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Weekly database backup completed successfully. (Size: 1.2 GB)</td>
-                <td class="col-activity">Maintenance</td>
-                <td class="col-ip">10.0.0.5</td>
-            </tr>
-            <!-- Row 8 -->
-            <tr class="activity-card-log" data-type="file">
-                <td class="col-time">Aug 24, 6:15 pm</td>
-                <td class="col-status"><span class="status-badge complete">COMPLETE</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150" alt="Avatar" class="mini-avatar">
-                        <div class="member-text"><span class="m-name">Sophia Garcia</span><span class="m-handle">@sophia_g</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Deleted file: Old_Project_Plan.docx from shared folder.</td>
-                <td class="col-activity">File Action</td>
-                <td class="col-ip">185.44.110.3</td>
-            </tr>
-            <!-- Row 9 -->
-            <tr class="activity-card-log" data-type="security">
-                <td class="col-time">Aug 24, 2:10 pm</td>
-                <td class="col-status"><span class="status-badge warning">WARNING</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <div class="mini-avatar system security"><i data-lucide="shield-check"></i></div>
-                        <div class="member-text"><span class="m-name">Access Control</span><span class="m-handle">Security</span></div>
-                    </div>
-                </td>
-                <td class="col-message">User permissions modified for #finance channel by Admin Emma.</td>
-                <td class="col-activity">Permission</td>
-                <td class="col-ip">192.168.1.10</td>
-            </tr>
-            <!-- Row 10 -->
-            <tr class="activity-card-log" data-type="mention">
-                <td class="col-time">Aug 23, 9:00 am</td>
-                <td class="col-status"><span class="status-badge complete">COMPLETE</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150" alt="Avatar" class="mini-avatar">
-                        <div class="member-text"><span class="m-name">Michael Brown</span><span class="m-handle">@mbrown</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Added 3 new members to the #development workspace.</td>
-                <td class="col-activity">Workspace</td>
-                <td class="col-ip">92.10.150.22</td>
-            </tr>
-            <!-- Row 11 -->
-            <tr class="activity-card-log" data-type="file">
-                <td class="col-time">Aug 22, 11:45 pm</td>
-                <td class="col-status"><span class="status-badge complete">COMPLETE</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=150" alt="Avatar" class="mini-avatar">
-                        <div class="member-text"><span class="m-name">Isabella White</span><span class="m-handle">@bella_w</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Downloaded 15 attachments from #general-resources.</td>
-                <td class="col-activity">Bulk Action</td>
-                <td class="col-ip">88.22.33.44</td>
-            </tr>
-            <!-- Row 12 -->
-            <tr class="activity-card-log" data-type="system">
-                <td class="col-time">Aug 22, 4:30 pm</td>
-                <td class="col-status"><span class="status-badge failed">FAILED</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <div class="mini-avatar system zap"><i data-lucide="alert-triangle"></i></div>
-                        <div class="member-text"><span class="m-name">Email Service</span><span class="m-handle">System</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Failed to send invitation emails to 2 pending members. (Timeout error)</td>
-                <td class="col-activity">Notification</td>
-                <td class="col-ip">127.0.0.1</td>
-            </tr>
-             <!-- Row 13 -->
-             <tr class="activity-card-log" data-type="mention">
-                <td class="col-time">Aug 21, 6:20 pm</td>
-                <td class="col-status"><span class="status-badge complete">COMPLETE</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <img src="https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=150" alt="Avatar" class="mini-avatar">
-                        <div class="member-text"><span class="m-name">Alex Turner</span><span class="m-handle">@aturner</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Created a new announcement: "Office reopens next week!"</td>
-                <td class="col-activity">Announcement</td>
-                <td class="col-ip">192.168.5.12</td>
-            </tr>
-            <!-- Row 14 -->
-            <tr class="activity-card-log" data-type="security">
-                <td class="col-time">Aug 21, 1:15 pm</td>
-                <td class="col-status"><span class="status-badge complete">COMPLETE</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <div class="mini-avatar system security"><i data-lucide="unlock"></i></div>
-                        <div class="member-text"><span class="m-name">Account Recovery</span><span class="m-handle">Security</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Password recovery link requested for member @mbrown.</td>
-                <td class="col-activity">Access</td>
-                <td class="col-ip">10.20.30.40</td>
-            </tr>
-            <!-- Row 15 -->
-            <tr class="activity-card-log" data-type="file">
-                <td class="col-time">Aug 20, 10:45 am</td>
-                <td class="col-status"><span class="status-badge complete">COMPLETE</span></td>
-                <td class="col-member">
-                    <div class="member-info-mini">
-                        <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=150" alt="Avatar" class="mini-avatar">
-                        <div class="member-text"><span class="m-name">Chloe King</span><span class="m-handle">@chloe_k</span></div>
-                    </div>
-                </td>
-                <td class="col-message">Uploaded image: Website_Mockup_Final.jpg (12.5 MB)</td>
-                <td class="col-activity">Media</td>
-                <td class="col-ip">172.20.10.5</td>
-            </tr>
+<?php endforeach; ?>
         </tbody>
     </table>
 </div>

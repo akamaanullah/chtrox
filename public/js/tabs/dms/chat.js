@@ -323,11 +323,14 @@
             initVoicePlayers(dmChatMessages);
         }
 
-        function updateMessageReactions(messageId, emoji, action, count, prevEmoji, prevCount) {
+        function updateMessageReactions(messageId, emoji, action, count, prevEmoji, prevCount, actorMemberId) {
             var msgEl = document.getElementById('dm-msg-' + messageId);
             if (!msgEl) return;
             var reactionsEl = msgEl.querySelector('.dm-msg-reactions');
             if (!reactionsEl) return;
+
+            var currentMemberId = window.CHATROX && window.CHATROX.user ? parseInt(window.CHATROX.user.workspace_member_id, 10) : 0;
+            var isMe = !actorMemberId || parseInt(actorMemberId, 10) === currentMemberId;
 
             function findBubbleByEmoji(key) {
                 var found = null;
@@ -337,7 +340,7 @@
                 return found;
             }
 
-            function updateBubble(key, value) {
+            function updateBubble(key, value, forceActive) {
                 if (!key) return;
                 var bubble = findBubbleByEmoji(key);
                 if (value <= 0) {
@@ -346,10 +349,15 @@
                 }
                 if (bubble) {
                     bubble.querySelector('.dm-reaction-count').textContent = value;
+                    if (forceActive === true) {
+                        bubble.classList.add('dm-reaction-bubble--active');
+                    } else if (forceActive === false) {
+                        bubble.classList.remove('dm-reaction-bubble--active');
+                    }
                     return;
                 }
                 var newBubble = document.createElement('span');
-                newBubble.className = 'dm-reaction-bubble';
+                newBubble.className = 'dm-reaction-bubble' + (forceActive === true ? ' dm-reaction-bubble--active' : '');
                 newBubble.setAttribute('data-emoji', key);
                 newBubble.setAttribute('title', 'View reactions');
                 newBubble.innerHTML = '<span class="dm-reaction-emoji">' + escapeHtml(key) + '</span> <span class="dm-reaction-count">' + value + '</span>';
@@ -357,16 +365,16 @@
             }
 
             if (action === 'removed') {
-                updateBubble(emoji, count);
+                updateBubble(emoji, count, isMe ? false : null);
             } else {
-                updateBubble(emoji, count);
+                updateBubble(emoji, count, isMe ? true : null);
                 if (prevEmoji && prevEmoji !== emoji) {
-                    updateBubble(prevEmoji, typeof prevCount === 'number' ? prevCount : 0);
+                    updateBubble(prevEmoji, typeof prevCount === 'number' ? prevCount : 0, isMe ? false : null);
                 }
             }
         }
 
-        var allowedTags = { b: 1, i: 1, s: 1, u: 1, strong: 1, em: 1, ul: 1, ol: 1, li: 1, p: 1, br: 1, span: 1, div: 1, a: 1 };
+        var allowedTags = { b: 1, i: 1, s: 1, u: 1, strong: 1, em: 1, ul: 1, ol: 1, li: 1, p: 1, br: 1, span: 1, div: 1, a: 1, pre: 1, code: 1 };
         function cleanStyleAttribute(node) {
             if (!node.getAttribute || !node.getAttribute('style')) return;
             node.style.removeProperty('background');
@@ -396,7 +404,7 @@
                         var isAllowedAttr = false;
                         if (name === 'style' || name === 'align') {
                             isAllowedAttr = true;
-                        } else if (tag === 'span' && (name === 'class' || name === 'contenteditable' || name === 'data-member-id' || name === 'data-username')) {
+                        } else if ((tag === 'span' || tag === 'code') && (name === 'class' || name === 'contenteditable' || name === 'data-member-id' || name === 'data-username')) {
                             isAllowedAttr = true;
                         } else if (tag === 'a' && (name === 'class' || name === 'contenteditable' || name === 'href' || name === 'target' || name === 'download')) {
                             isAllowedAttr = true;
@@ -611,7 +619,7 @@
                         .catch(function (retryErr) {
                             console.warn('[ChatRox] Voice blob playback failed:', retryErr);
                             if (window.ChatRoxToast && typeof window.ChatRoxToast.error === 'function') {
-                                window.ChatRoxToast.error('Voice message play nahi ho saki.');
+                                window.ChatRoxToast.error('Unable to play the voice message. Please try again.');
                             }
                             setVoicePlayIcon(playBtn, false);
                         });
@@ -847,7 +855,11 @@
                 var voiceLabel = voiceSeconds > 0 ? formatVoiceDuration(voiceSeconds) : '0:00';
                 bubbleContent += buildVoicePlayerHtml(voiceFile.url, voiceLabel, voiceFile.id || msg.id, voiceSeconds);
             } else if (msg.body) {
-                bubbleContent += '<p>' + msg.body + '</p>';
+                if (msg.body.indexOf('<pre>') !== -1 || msg.body.indexOf('<p>') === 0) {
+                    bubbleContent += msg.body;
+                } else {
+                    bubbleContent += '<p>' + msg.body + '</p>';
+                }
             }
 
             if (msg.attachments && msg.attachments.length) {
@@ -969,14 +981,19 @@
         });
 
         dmChatInput.addEventListener('paste', function (e) {
-            e.preventDefault();
             var clipboard = e.clipboardData || window.clipboardData;
             if (!clipboard) return;
-            var html = clipboard.getData('text/html');
-            var text = clipboard.getData('text/plain');
-            if (html) {
-                document.execCommand('insertHTML', false, sanitizeHtml(html));
-            } else if (text) {
+
+            var files = clipboard.files;
+            if (files && files.length) {
+                e.preventDefault();
+                handleFiles(files);
+                return;
+            }
+
+            e.preventDefault();
+            var text = clipboard.getData('text/plain') || '';
+            if (text) {
                 document.execCommand('insertText', false, text);
             }
         });
@@ -1023,7 +1040,12 @@
                 bubbleContent += '<div class="dm-msg-reply-wrap"><div class="dm-msg-reply-preview">' + escapeHtml(replySnippet) + '</div></div>';
             }
             if (text) {
-                bubbleContent += '<p>' + sanitizeHtml(rawHtml) + '</p>';
+                var cleanedHtml = sanitizeHtml(rawHtml);
+                if (cleanedHtml.indexOf('<pre>') !== -1 || cleanedHtml.indexOf('<p>') === 0) {
+                    bubbleContent += cleanedHtml;
+                } else {
+                    bubbleContent += '<p>' + cleanedHtml + '</p>';
+                }
             }
             if (files && files.length) {
                 bubbleContent += buildPendingFilesHtml(files, 0);
@@ -1062,13 +1084,81 @@
             if (statusLabel) statusLabel.textContent = 'Failed';
             var bubble = el.querySelector('.dm-msg-bubble');
             if (!bubble) return;
-            var failHtml = '<p class="dm-msg-failed-text">' + escapeHtml(message || 'Failed to send') + '</p>';
+            var cleanMsg = message || 'Failed to send';
+            if (cleanMsg.length > 100) {
+                cleanMsg = cleanMsg.substring(0, 100) + '...';
+            }
+            var failHtml = '<p class="dm-msg-failed-text">' + escapeHtml(cleanMsg) + '</p>';
             var progress = bubble.querySelector('.dm-upload-progress');
             if (progress) {
                 progress.outerHTML = failHtml;
             } else {
                 bubble.insertAdjacentHTML('beforeend', failHtml);
             }
+        }
+
+        function appendAttachmentsToDetails(msg) {
+            if (!msg.attachments || !msg.attachments.length) return;
+
+            var detailsMediaGrid = document.getElementById('dmDetailsMediaGrid');
+            var detailsMediaEmpty = document.getElementById('dmDetailsMediaEmpty');
+            var detailsFilesList = document.getElementById('dmDetailsFilesList');
+            var detailsFilesEmpty = document.getElementById('dmDetailsFilesEmpty');
+
+            msg.attachments.forEach(function (att) {
+                if (att.category === 'image') {
+                    if (detailsMediaGrid) {
+                        if (detailsMediaGrid.querySelector('[data-message-id="' + msg.id + '"]')) return;
+
+                        var btnHtml = '<button type="button" class="dm-details-media-thumb-btn js-details-media-jump"' +
+                            ' data-message-id="' + parseInt(msg.id, 10) + '"' +
+                            ' aria-label="' + escapeHtml(att.original_name) + '">' +
+                            '<img src="' + escapeHtml(att.url) + '" alt="' + escapeHtml(att.original_name) + '"' +
+                            ' class="dm-details-media-thumb" loading="lazy">' +
+                            '</button>';
+                        
+                        detailsMediaGrid.insertAdjacentHTML('afterbegin', btnHtml);
+                        if (detailsMediaEmpty) {
+                            detailsMediaEmpty.hidden = true;
+                            detailsMediaEmpty.classList.remove('dm-details-empty--show');
+                        }
+                    }
+                } else if (att.category !== 'audio') {
+                    if (detailsFilesList) {
+                        if (detailsFilesList.querySelector('[href*="/files/download/' + att.id + '"]')) return;
+
+                        var sizeLabel = (window.ChatRoxMedia && window.ChatRoxMedia.formatFileSize)
+                            ? window.ChatRoxMedia.formatFileSize(att.size_bytes)
+                            : ((att.size_bytes / 1024).toFixed(1) + ' KB');
+
+                        var fileHtml = '<div class="dm-details-file-row">' +
+                            '<a href="' + escapeHtml(att.url) + '" target="_blank" class="dm-details-file-link" title="View file">' +
+                            '<span class="dm-details-file-icon"><i data-lucide="file-text" size="18"></i></span>' +
+                            '<div class="dm-details-file-info">' +
+                            '<span class="dm-details-file-name">' + escapeHtml(att.original_name) + '</span>' +
+                            '<span class="dm-details-file-size">' + escapeHtml(sizeLabel) + '</span>' +
+                            '</div>' +
+                            '</a>' +
+                            '<div class="dm-details-file-actions">' +
+                            '<a href="' + escapeHtml(att.url) + '" target="_blank" class="dm-details-file-action" title="View"><i data-lucide="eye" size="14"></i></a>' +
+                            '<a href="' + escapeHtml(att.url) + '" download class="dm-details-file-action" title="Download"><i data-lucide="download" size="14"></i></a>' +
+                            '</div>' +
+                            '</div>';
+
+                        detailsFilesList.insertAdjacentHTML('afterbegin', fileHtml);
+                        if (detailsFilesEmpty) {
+                            detailsFilesEmpty.hidden = true;
+                            detailsFilesEmpty.classList.remove('dm-details-empty--show');
+                        }
+
+                        if (window.ChatRoxLucide) {
+                            window.ChatRoxLucide.refresh(detailsFilesList);
+                        } else if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                            window.lucide.createIcons({ nodes: [detailsFilesList] });
+                        }
+                    }
+                }
+            });
         }
 
         function finalizeOutgoingMessage(msg) {
@@ -1081,8 +1171,12 @@
             if (activeWithUsername) {
                 updateSidebarItem(activeWithUsername, sidebarPreview, msg.time_label, 'me', msg.read_status);
             }
+            appendAttachmentsToDetails(msg);
             if (window.ChatRoxWS) {
                 window.ChatRoxWS.broadcast(conversationId, 'new_message', msg);
+            }
+            if (window.highlightCodeBlocks) {
+                window.highlightCodeBlocks(dmChatMessages);
             }
         }
 
@@ -1118,6 +1212,14 @@
                         updatePendingProgress(pendingId, pct);
                     }
                 }).then(function (resData) {
+                    if (resData.partial && resData.errors && resData.errors.length > 0) {
+                        if (window.ChatRoxToast) {
+                            var errMsg = resData.errors.map(function (err) {
+                                return '"' + err.name + '": ' + err.message;
+                            });
+                            window.ChatRoxToast.error(errMsg, 'Some uploads failed');
+                        }
+                    }
                     return (resData.files || []).map(function (f) { return f.id; });
                 });
             } else if (hasFiles) {
@@ -1139,7 +1241,7 @@
                     }
                 }
 
-                return fetch(window.CHATROX.baseUrl + '/api/messages/send', {
+                return fetch(window.CHATROX.apiUrl + '/messages', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1320,7 +1422,7 @@
         function sendGifMessage(src) {
             if (!src) return;
             
-            fetch(window.CHATROX.baseUrl + '/api/messages/send', {
+            fetch(window.CHATROX.apiUrl + '/messages', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1384,10 +1486,12 @@
                 if (!files || !files.length) return;
                 if (window.ChatRoxUpload) {
                     var validation = window.ChatRoxUpload.validateFiles(files);
-                    if (!validation.valid) {
+                    if (validation.errors && validation.errors.length > 0) {
                         if (window.ChatRoxToast) {
-                            window.ChatRoxToast.error(validation.errors, 'Could not attach file');
+                            window.ChatRoxToast.error(validation.errors, 'Could not attach some files');
                         }
+                    }
+                    if (validation.files.length === 0) {
                         return;
                     }
                     attachedFiles = validation.files;
@@ -1472,7 +1576,7 @@
 
         document.querySelectorAll('.dm-chat-tool-btn[data-action]').forEach(function (btn) {
             if (btn.getAttribute('data-action') === 'emoji') return;
-            btn.addEventListener('click', function (e) {
+            listen(btn, 'click', function (e) {
                 e.preventDefault();
                 var action = btn.getAttribute('data-action');
                 if (action === 'attach' && dmChatFileInput) {
@@ -1787,7 +1891,7 @@
             var formData = new FormData();
             formData.append('files[]', file);
 
-            fetch(window.CHATROX.baseUrl + '/api/files/upload', {
+            fetch(window.CHATROX.apiUrl + '/files/upload', {
                 method: 'POST',
                 body: formData
             })
@@ -1797,7 +1901,7 @@
                     throw new Error('Upload failed');
                 }
                 var fileIds = resData.files.map(function (f) { return f.id; });
-                return fetch(window.CHATROX.baseUrl + '/api/messages/send', {
+                return fetch(window.CHATROX.apiUrl + '/messages', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1891,7 +1995,7 @@
                 loadMoreBtn.textContent = 'Loading...';
             }
 
-            fetch(window.CHATROX.baseUrl + '/api/messages/history?conversation_id=' + encodeURIComponent(conversationId) +
+            fetch(window.CHATROX.apiUrl + '/messages/history?conversation_id=' + encodeURIComponent(conversationId) +
                 '&before_id=' + encodeURIComponent(oldestMessageId) + '&limit=30')
                 .then(function (res) { return res.json(); })
                 .then(function (resData) {
@@ -1945,7 +2049,7 @@
                 loadNewerBtn.textContent = 'Loading...';
             }
 
-            fetch(window.CHATROX.baseUrl + '/api/messages/history?conversation_id=' + encodeURIComponent(conversationId) +
+            fetch(window.CHATROX.apiUrl + '/messages/history?conversation_id=' + encodeURIComponent(conversationId) +
                 '&after_id=' + encodeURIComponent(newestMessageId) + '&limit=30')
                 .then(function (res) { return res.json(); })
                 .then(function (resData) {
@@ -2113,7 +2217,7 @@
 
                 if (tryFocus()) return;
 
-                fetch(window.CHATROX.baseUrl + '/api/messages/context?conversation_id=' + encodeURIComponent(conversationId) +
+                fetch(window.CHATROX.apiUrl + '/messages/context?conversation_id=' + encodeURIComponent(conversationId) +
                     '&message_id=' + encodeURIComponent(messageId) + '&limit=30')
                     .then(function (res) { return res.json(); })
                     .then(function (data) {
@@ -2162,6 +2266,27 @@
                     }
                 });
 
+                // Toggle date dividers visibility based on visible messages
+                dmChatMessages.querySelectorAll('.dm-date-divider').forEach(function (divider) {
+                    var dateKey = divider.getAttribute('data-date-key');
+                    var hasVisibleMsg = false;
+                    for (var i = 0; i < allMsgs.length; i++) {
+                        var msg = allMsgs[i];
+                        if (!msg.classList.contains('dm-chat-msg--search-nomatch') && !msg.classList.contains('dm-chat-msg--hidden')) {
+                            var createdAt = msg.getAttribute('data-created-at') || '';
+                            if (window.ChatRoxDateDivider && window.ChatRoxDateDivider.dayKey(createdAt) === dateKey) {
+                                hasVisibleMsg = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (hasVisibleMsg) {
+                        divider.style.display = '';
+                    } else {
+                        divider.style.display = 'none';
+                    }
+                });
+
                 var emptyStateEl = document.getElementById('dmChatSearchEmptyState');
                 if (emptyStateEl) {
                     if (hasSearch && matchCount === 0) {
@@ -2189,7 +2314,7 @@
                 resultsDropdown.innerHTML = '<div style="padding: 12px; text-align: center; color: #94a3b8; font-size: 13px;">Searching history...</div>';
                 resultsDropdown.hidden = false;
 
-                var url = window.CHATROX.baseUrl + '/api/search?q=' + encodeURIComponent(q) + 
+                var url = window.CHATROX.apiUrl + '/search?q=' + encodeURIComponent(q) + 
                           '&conversation_id=' + encodeURIComponent(conversationId) + '&limit=10';
                 
                 fetch(url, {
@@ -2322,7 +2447,7 @@
                 positionReactionPicker(reactBtn);
             });
             reactionPicker.querySelectorAll('.dm-reaction-option').forEach(function (btn) {
-                btn.addEventListener('click', function (e) {
+                listen(btn, 'click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
                     var emoji = btn.getAttribute('data-emoji') || btn.textContent.trim();
@@ -2340,7 +2465,7 @@
                     
                     closeReactionPicker();
 
-                    fetch(window.CHATROX.baseUrl + '/api/messages/react', {
+                    fetch(window.CHATROX.apiUrl + '/messages/react', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -2433,7 +2558,7 @@
                 var emoji = bubble.getAttribute('data-emoji') || '';
                 if (!messageId || !emoji) return;
 
-                fetch(window.CHATROX.baseUrl + '/api/messages/reactions?message_id=' + encodeURIComponent(messageId) + '&emoji=' + encodeURIComponent(emoji), {
+                fetch(window.CHATROX.apiUrl + '/messages/reactions?message_id=' + encodeURIComponent(messageId) + '&emoji=' + encodeURIComponent(emoji), {
                     credentials: 'same-origin'
                 })
                 .then(function (res) { return res.json(); })
@@ -2508,15 +2633,15 @@
                     openForwardModal(msg);
                 }
             });
-            forwardOverlay.addEventListener('click', closeForwardModal);
+            listen(forwardOverlay, 'click', closeForwardModal);
             document.querySelectorAll('.js-forward-close').forEach(function (btn) {
-                btn.addEventListener('click', function () { closeForwardModal(); });
+                listen(btn, 'click', function () { closeForwardModal(); });
             });
             forwardModal.querySelectorAll('.js-forward-check').forEach(function (cb) {
-                cb.addEventListener('change', updateForwardSelectedCount);
+                listen(cb, 'change', updateForwardSelectedCount);
             });
             if (forwardSearchInput) {
-                forwardSearchInput.addEventListener('input', function () {
+                listen(forwardSearchInput, 'input', function () {
                     var q = (this.value || '').trim().toLowerCase();
                     forwardModal.querySelectorAll('.js-forward-row').forEach(function (row) {
                         var search = (row.getAttribute('data-search') || '').toLowerCase();
@@ -2525,7 +2650,7 @@
                     });
                 });
             }
-            forwardSubmit.addEventListener('click', function () {
+            listen(forwardSubmit, 'click', function () {
                 if (!currentForwardMessage) return;
                 var msgIdMatch = (currentForwardMessage.id || '').match(/dm-msg-(\d+)/);
                 if (!msgIdMatch) return;
@@ -2541,7 +2666,7 @@
                 var messageId = parseInt(msgIdMatch[1], 10);
                 forwardSubmit.disabled = true;
 
-                fetch(window.CHATROX.baseUrl + '/api/messages/forward', {
+                fetch(window.CHATROX.apiUrl + '/messages/forward', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -2804,6 +2929,8 @@
             var everyoneBtn = deleteMenu.querySelector('[data-delete-type="everyone"]');
             if (!everyoneBtn) return;
             var isOwn = msg && msg.classList.contains('dm-chat-msg--me');
+            // Use style.display directly — CSS 'display:block' would override the [hidden] attribute
+            everyoneBtn.style.display = isOwn ? '' : 'none';
             everyoneBtn.hidden = !isOwn;
         }
 
@@ -2824,8 +2951,8 @@
                 var messageId = parseInt(matches[1], 10);
 
                 if (type === 'everyone') {
-                    fetch(window.CHATROX.baseUrl + '/api/messages/delete', {
-                        method: 'POST',
+                    fetch(window.CHATROX.apiUrl + '/messages', {
+                        method: 'DELETE',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ message_id: messageId, scope: 'everyone' })
                     })
@@ -2845,8 +2972,8 @@
                         console.error('Failed to delete message:', err);
                     });
                 } else {
-                    fetch(window.CHATROX.baseUrl + '/api/messages/delete', {
-                        method: 'POST',
+                    fetch(window.CHATROX.apiUrl + '/messages', {
+                        method: 'DELETE',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ message_id: messageId, scope: 'me' })
                     })
@@ -2991,8 +3118,8 @@
                         if (!matches || !newText) return;
                         var messageId = parseInt(matches[1], 10);
 
-                        fetch(window.CHATROX.baseUrl + '/api/messages/edit', {
-                            method: 'POST',
+                        fetch(window.CHATROX.apiUrl + '/messages', {
+                            method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 message_id: messageId,
@@ -3159,7 +3286,7 @@
 
             if (tryFocus()) return;
 
-            fetch(window.CHATROX.baseUrl + '/api/messages/context?conversation_id=' + encodeURIComponent(conversationId) +
+            fetch(window.CHATROX.apiUrl + '/messages/context?conversation_id=' + encodeURIComponent(conversationId) +
                 '&message_id=' + encodeURIComponent(messageId) + '&limit=30')
                 .then(function (res) { return res.json(); })
                 .then(function (data) {
@@ -3185,7 +3312,7 @@
                 return;
             }
 
-            fetch(window.CHATROX.baseUrl + '/api/messages/pin', {
+            fetch(window.CHATROX.apiUrl + '/messages/pin', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message_id: messageId, action: 'unpin' })
@@ -3208,7 +3335,7 @@
             if (!messageId) return;
             var action = msg.getAttribute('data-pinned') === '1' ? 'unpin' : 'pin';
 
-            fetch(window.CHATROX.baseUrl + '/api/messages/pin', {
+            fetch(window.CHATROX.apiUrl + '/messages/pin', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message_id: messageId, action: action })
@@ -3420,7 +3547,7 @@
                 return;
             }
             hasUnread = false;
-            fetch(window.CHATROX.baseUrl + '/api/messages/read', {
+            fetch(window.CHATROX.apiUrl + '/messages/read', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ conversation_id: conversationId })
@@ -3500,6 +3627,9 @@
 
         handleSubscribe();
         markAsRead(true);
+        if (dmChatInput) {
+            dmChatInput.focus();
+        }
         listen(document, 'chatrox:ws_connected', function () {
             handleSubscribe();
             markAsRead(true);
@@ -3507,6 +3637,7 @@
 
         // Notify global handlers that this conversation is now open (clears unread badges)
         var withUsername = chatScreen ? chatScreen.dataset.withUsername : null;
+        console.log('[ChatRoxDMs] initChat: withUsername =', withUsername, 'conversationId =', conversationId);
         if (withUsername) {
             document.dispatchEvent(new CustomEvent('chatrox:conversation_opened', {
                 detail: { with_username: withUsername, conversation_id: conversationId }
@@ -3557,7 +3688,11 @@
                     hasUnread = true;
                 }
             }
+            appendAttachmentsToDetails(msg);
             refreshIcons();
+            if (window.highlightCodeBlocks) {
+                window.highlightCodeBlocks(dmChatMessages);
+            }
         });
 
         // Receiver: Conversation Read Cursors
@@ -3590,7 +3725,7 @@
         listen(document, 'chatrox:message_reaction', function (e) {
             var data = e.detail;
             if (!data || String(data.conversation_id) !== String(conversationId)) return;
-            updateMessageReactions(data.message_id, data.emoji, data.action, data.count, data.prev_emoji, data.prev_count);
+            updateMessageReactions(data.message_id, data.emoji, data.action, data.count, data.prev_emoji, data.prev_count, data.actor_member_id);
         });
 
         // Receiver: Deletions
@@ -3772,11 +3907,47 @@
 
             playVoiceMedia(wrap, media, playBtn);
         });
-        listen(document, 'chatrox:apply_message_focus', function () {
-            applyPendingMessageFocus();
-        });
+        // ═══════════════════════════════════════════════════════════════
+        //  DRAFT AUTO-SAVE
+        // ═══════════════════════════════════════════════════════════════
+        if (dmChatInput && conversationId) {
+            var cachedDraft = localStorage.getItem('chatrox_draft_' + conversationId);
+            if (cachedDraft) {
+                dmChatInput.textContent = cachedDraft;
+                // Place cursor at the end
+                try {
+                    var range = document.createRange();
+                    var sel = window.getSelection();
+                    range.selectNodeContents(dmChatInput);
+                    range.collapse(false);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                } catch (e) {
+                    console.warn('Failed to restore cursor position', e);
+                }
+            }
+
+            listen(dmChatInput, 'input', function () {
+                var text = dmChatInput.textContent || '';
+                if (text.trim() === '') {
+                    localStorage.removeItem('chatrox_draft_' + conversationId);
+                } else {
+                    localStorage.setItem('chatrox_draft_' + conversationId, text);
+                }
+            });
+
+            if (dmChatForm) {
+                listen(dmChatForm, 'submit', function () {
+                    localStorage.removeItem('chatrox_draft_' + conversationId);
+                }, true);
+            }
+        }
+
         applyPendingMessageFocus();
         dmChatMessages.scrollTop = 0;
+        if (window.highlightCodeBlocks) {
+            window.highlightCodeBlocks(dmChatMessages);
+        }
     }
 
     var chatPageLoadHandled = false;

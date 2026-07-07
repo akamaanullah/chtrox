@@ -56,49 +56,50 @@ class Navigation extends Model
             return $counts;
         }
 
+        $cacheKey = "nav_badges_{$memberId}_{$workspaceId}";
+        $cached = \App\Helpers\Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
         $db = self::db();
 
-        $dmStmt = $db->prepare("
-            SELECT COUNT(*)
-            FROM messages m
-            JOIN conversations c ON m.conversation_id = c.id
+        // Combine DM and Channel unread counts into a single query using joins
+        $unreadStmt = $db->prepare("
+            SELECT 
+                c.type,
+                COUNT(m.id) as unread_count
+            FROM conversations c
             LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
-            WHERE m.workspace_id = :workspace_id
+            LEFT JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.workspace_member_id = :member_id AND cp.left_at IS NULL
+            LEFT JOIN channel_members cm ON cm.channel_id = c.channel_id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
+            JOIN messages m ON m.conversation_id = c.id
               AND m.sender_id != :member_id
               AND m.deleted_for_everyone_at IS NULL
-              AND c.type IN ('dm', 'group_dm')
-              AND EXISTS (
-                  SELECT 1 FROM conversation_participants cp
-                  WHERE cp.conversation_id = c.id AND cp.workspace_member_id = :member_id AND cp.left_at IS NULL
-              )
               AND (crc.last_read_message_id IS NULL OR m.id > crc.last_read_message_id)
+            WHERE c.workspace_id = :workspace_id
+              AND (
+                  (c.type IN ('dm', 'group_dm') AND cp.id IS NOT NULL)
+                  OR
+                  (c.type = 'channel' AND cm.id IS NOT NULL)
+              )
+            GROUP BY c.type
         ");
-        $dmStmt->execute([
+        $unreadStmt->execute([
             'member_id' => $memberId,
             'workspace_id' => $workspaceId,
         ]);
-        $counts['dms'] = (int)$dmStmt->fetchColumn();
+        $unreadResults = $unreadStmt->fetchAll();
 
-        $channelStmt = $db->prepare("
-            SELECT COUNT(*)
-            FROM messages m
-            JOIN conversations c ON m.conversation_id = c.id
-            LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
-            WHERE m.workspace_id = :workspace_id
-              AND m.sender_id != :member_id
-              AND m.deleted_for_everyone_at IS NULL
-              AND c.type = 'channel'
-              AND EXISTS (
-                  SELECT 1 FROM channel_members cm
-                  WHERE cm.channel_id = c.channel_id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
-              )
-              AND (crc.last_read_message_id IS NULL OR m.id > crc.last_read_message_id)
-        ");
-        $channelStmt->execute([
-            'member_id' => $memberId,
-            'workspace_id' => $workspaceId,
-        ]);
-        $counts['channels'] = (int)$channelStmt->fetchColumn();
+        foreach ($unreadResults as $row) {
+            $type = $row['type'];
+            $count = (int)$row['unread_count'];
+            if ($type === 'dm' || $type === 'group_dm') {
+                $counts['dms'] += $count;
+            } elseif ($type === 'channel') {
+                $counts['channels'] += $count;
+            }
+        }
 
         $activityStmt = $db->prepare("
             SELECT COUNT(*)
@@ -107,6 +108,8 @@ class Navigation extends Model
         ");
         $activityStmt->execute([$memberId, $workspaceId]);
         $counts['activity'] = (int)$activityStmt->fetchColumn();
+
+        \App\Helpers\Cache::set($cacheKey, $counts, 30);
 
         return $counts;
     }

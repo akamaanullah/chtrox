@@ -227,6 +227,7 @@ class MessageController extends Controller
             }
 
             $db->commit();
+            \App\Helpers\Cache::invalidateConversationDashboardCache((int)$conversationId, $workspaceId);
 
             // Prepare JSON payload for return and websockets
             $stmtMsg = $db->prepare("
@@ -418,6 +419,8 @@ class MessageController extends Controller
         $stmt->execute([$messageId, $emoji]);
         $countRow = $stmt->fetch();
 
+        \App\Helpers\Cache::invalidateConversationDashboardCache((int)$message['conversation_id'], $workspaceId);
+
         $reactions = 
             MessageEnricher::getMessageReactions($messageId, $memberId);
 
@@ -519,7 +522,7 @@ class MessageController extends Controller
                 'member_id' => (int)$row['member_id'],
                 'username' => $row['username'],
                 'name' => trim($row['name']),
-                'avatar' => $row['avatar'] ?: DEFAULT_AVATAR_URL,
+                'avatar' => \App\Core\View::avatar($row['avatar']),
                 'is_you' => ((int)$row['member_id'] === (int)$memberId)
             ];
         }
@@ -577,6 +580,8 @@ class MessageController extends Controller
         ");
         $stmt->execute([$body, $messageId]);
 
+        \App\Helpers\Cache::invalidateConversationDashboardCache((int)$message['conversation_id'], $workspaceId);
+
         $this->jsonResponse([
             'success' => true,
             'message_id' => $messageId,
@@ -611,12 +616,30 @@ class MessageController extends Controller
         $db = Model::db();
 
         // Find message
-        $stmt = $db->prepare("SELECT * FROM messages WHERE id = ? AND workspace_id = ?");
+        $stmt = $db->prepare(
+            "SELECT m.*, c.type AS conversation_type, c.channel_id
+            FROM messages m
+            JOIN conversations c ON c.id = m.conversation_id
+            WHERE m.id = ? AND m.workspace_id = ?"
+        );
         $stmt->execute([$messageId, $workspaceId]);
-        $message = $stmt->fetch();
+        $message = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$message) {
             $this->jsonResponse(['error' => 'Message not found'], 404);
+        }
+
+        $isAdmin = in_array($userRole, ['owner', 'admin'], true);
+        $canAccessConversation = $this->memberCanAccessConversation(
+            $db,
+            (int)$message['conversation_id'],
+            (string)$message['conversation_type'],
+            (int)($message['channel_id'] ?? 0),
+            $memberId
+        );
+
+        if (!$canAccessConversation && !$isAdmin) {
+            $this->jsonResponse(['error' => 'You are not a participant in this conversation'], 403);
         }
 
         if ($message['deleted_for_everyone_at'] !== null && $scope === 'everyone') {
@@ -624,7 +647,6 @@ class MessageController extends Controller
         }
 
         $isSender = (int)$message['sender_id'] === (int)$memberId;
-        $isAdmin = in_array($userRole, ['owner', 'admin'], true);
 
         if ($scope === 'everyone') {
             if (!$isSender && !$isAdmin) {
@@ -653,6 +675,8 @@ class MessageController extends Controller
                 "Deleted message ID {$messageId} for everyone"
             ]);
 
+            \App\Helpers\Cache::invalidateConversationDashboardCache((int)$message['conversation_id'], $workspaceId);
+
             $this->jsonResponse([
                 'success' => true,
                 'action' => 'everyone',
@@ -668,6 +692,8 @@ class MessageController extends Controller
             ON DUPLICATE KEY UPDATE deleted_at = CURRENT_TIMESTAMP
         ");
         $stmt->execute([$messageId, $memberId]);
+
+        \App\Helpers\Cache::invalidateConversationDashboardCache((int)$message['conversation_id'], $workspaceId);
 
         $this->jsonResponse([
             'success' => true,
@@ -736,6 +762,8 @@ class MessageController extends Controller
             $stmt = $db->prepare("DELETE FROM message_pins WHERE conversation_id = ? AND message_id = ? AND pinned_by = ?");
             $stmt->execute([$conversationId, $messageId, $memberId]);
         }
+
+        \App\Helpers\Cache::invalidateConversationDashboardCache((int)$conversationId, $workspaceId);
 
         $this->jsonResponse([
             'success' => true,
@@ -1062,6 +1090,9 @@ class MessageController extends Controller
             }
 
             $db->commit();
+            foreach ($createdMessages as $createdMsg) {
+                \App\Helpers\Cache::invalidateConversationDashboardCache((int)$createdMsg['conversation_id'], $workspaceId);
+            }
             $this->jsonResponse([
                 'success' => true,
                 'messages' => $createdMessages,
@@ -1129,6 +1160,8 @@ class MessageController extends Controller
               AND mds.state != 'read'
         ");
         $stmt->execute([$conversationId, $memberId]);
+
+        \App\Helpers\Cache::invalidateConversationDashboardCache((int)$conversationId, $workspaceId);
 
         $this->jsonResponse([
             'success' => true,

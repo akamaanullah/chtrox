@@ -168,24 +168,59 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    // --- AJAX Utility ---
+    function adminAjax(url, method, data) {
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        if (window.CHATROX_ADMIN && window.CHATROX_ADMIN.csrfToken) {
+            headers['X-CSRF-Token'] = window.CHATROX_ADMIN.csrfToken;
+        }
+        return fetch(window.CHATROX_ADMIN.baseUrl + url, {
+            method: method,
+            headers: headers,
+            body: JSON.stringify(data)
+        }).then(res => {
+            return res.json().then(json => {
+                if (!res.ok) {
+                    throw new Error(json.error || 'Server error');
+                }
+                return json;
+            });
+        });
+    }
+
     if (editForm) {
         editForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const submitBtn = document.getElementById('editAnnSubmitBtn');
             const originalText = submitBtn.innerHTML;
             
+            const formData = new FormData(editForm);
+            const data = {
+                id: formData.get('id'),
+                title: formData.get('title'),
+                tag: formData.get('tag'),
+                message: formData.get('message'),
+                start_date: formData.get('start_date'),
+                end_date: formData.get('end_date')
+            };
+
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<span>SAVING...</span> <i data-lucide="loader" class="spin"></i>';
             if (window.lucide) window.lucide.createIcons();
             
-            setTimeout(() => {
-                utils.closeModal(editAnnModal);
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalText;
-                if (window.lucide) window.lucide.createIcons();
-                // In a real app, we'd update the row here
-                utils.showToast("Announcement updated successfully!");
-            }, 1200);
+            adminAjax('/api/admin/announcements', 'PATCH', data)
+                .then(res => {
+                    utils.closeModal(editAnnModal);
+                    window.location.reload();
+                })
+                .catch(err => {
+                    alert(err.message);
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                    if (window.lucide) window.lucide.createIcons();
+                });
         });
     }
 
@@ -205,21 +240,52 @@ document.addEventListener('DOMContentLoaded', function () {
             const submitBtn = document.getElementById('annSubmitBtn');
             const originalText = submitBtn.innerHTML;
             
+            const formData = new FormData(addForm);
+            const data = {
+                title: formData.get('title'),
+                tag: formData.get('tag'),
+                message: formData.get('message'),
+                start_date: formData.get('start_date'),
+                end_date: formData.get('end_date')
+            };
+
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<span>BROADCASTING...</span> <i data-lucide="loader" class="spin"></i>';
             if (window.lucide) window.lucide.createIcons();
             
-            setTimeout(() => {
-                utils.closeModal(addAnnModal);
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalText;
-                if (window.lucide) window.lucide.createIcons();
-                // Reset form
-                addForm.reset();
-                updateEmojiPreview();
-            }, 1500);
+            adminAjax('/api/admin/announcements', 'POST', data)
+                .then(res => {
+                    utils.closeModal(addAnnModal);
+                    window.location.reload();
+                })
+                .catch(err => {
+                    alert(err.message);
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                    if (window.lucide) window.lucide.createIcons();
+                });
         });
     }
+
+    // Delegate Delete Button Click
+    annTable.addEventListener('click', (e) => {
+        const deleteBtn = e.target.closest('.ann-row .delete');
+        if (deleteBtn) {
+            const row = deleteBtn.closest('.ann-row');
+            if (!row) return;
+            const id = row.dataset.id;
+            const title = row.dataset.title;
+            if (confirm(`Are you sure you want to remove the announcement "${title}"?`)) {
+                adminAjax('/api/admin/announcements', 'DELETE', { id })
+                    .then(res => {
+                        window.location.reload();
+                    })
+                    .catch(err => {
+                        alert(err.message);
+                    });
+            }
+        }
+    });
 
     // Date inputs usually don't need much logic unless we're validating ranges
     // But we'll keep the script clean by removing unused image upload logic

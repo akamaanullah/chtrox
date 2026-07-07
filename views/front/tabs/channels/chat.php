@@ -116,7 +116,14 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
                             endif;
                             ?>
                         <?php elseif ($m['text']): ?>
-                            <p><?php echo $m['text']; ?></p>
+                            <?php 
+                            $cleaned = \App\Helpers\HtmlSanitizer::clean($m['text']);
+                            if (strpos($cleaned, '<pre>') !== false || strpos($cleaned, '<p>') === 0) {
+                                echo $cleaned;
+                            } else {
+                                echo '<p>' . $cleaned . '</p>';
+                            }
+                            ?>
                         <?php endif; ?>
 
                         <?php if (!empty($images)): ?>
@@ -460,10 +467,12 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
                         </div>
                         <h3 class="dm-details-name"><?php echo $name; ?></h3>
                         <span class="dm-details-handle">WORKSPACE CHANNEL</span>
+                        <?php if (!empty($active_channel['description'])): ?>
                         <div class="dm-details-bio-wrap">
                             <span class="dm-details-bio-label">CHANNEL PURPOSE</span>
-                            <p class="dm-details-bio"><?php echo htmlspecialchars($active_channel['description'] ?? 'Team-wide discussions and project alignment.'); ?></p>
+                            <p class="dm-details-bio"><?php echo htmlspecialchars($active_channel['description']); ?></p>
                         </div>
+                        <?php endif; ?>
 
                         <?php if (!$isDefault && ($currentUserChannelRole ?? 'member') !== 'owner'): ?>
                         <div class="channel-actions-section" style="margin-top: 15px; margin-bottom: 20px; width: 100%;">
@@ -514,23 +523,28 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
                             </button>
                         <?php endforeach; ?>
                     </div>
-                    <div class="dm-details-empty" id="dmDetailsMediaEmpty"<?php echo !empty($conversation_media) ? ' hidden' : ''; ?>>No media shared yet</div>
+                    <div class="dm-details-empty<?php echo empty($conversation_media) ? ' dm-details-empty--show' : ''; ?>" id="dmDetailsMediaEmpty"<?php echo !empty($conversation_media) ? ' hidden' : ''; ?>>No media shared yet</div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentFiles" role="tabpanel"
                     hidden>
                     <div class="dm-details-files-list" id="dmDetailsFilesList">
                         <?php foreach ($conversation_files as $file): ?>
-                            <a href="<?php echo htmlspecialchars($file['url']); ?>" class="dm-details-file-row" download>
-                                <span class="dm-details-file-icon"><i data-lucide="file-text" size="18"></i></span>
-                                <div class="dm-details-file-info">
-                                    <span class="dm-details-file-name"><?php echo htmlspecialchars($file['name']); ?></span>
-                                    <span class="dm-details-file-size"><?php echo htmlspecialchars($file['size_label']); ?></span>
+                            <div class="dm-details-file-row">
+                                <a href="<?php echo htmlspecialchars($file['url']); ?>" target="_blank" class="dm-details-file-link" title="View file">
+                                    <span class="dm-details-file-icon"><i data-lucide="file-text" size="18"></i></span>
+                                    <div class="dm-details-file-info">
+                                        <span class="dm-details-file-name"><?php echo htmlspecialchars($file['name']); ?></span>
+                                        <span class="dm-details-file-size"><?php echo htmlspecialchars($file['size_label']); ?></span>
+                                    </div>
+                                </a>
+                                <div class="dm-details-file-actions">
+                                    <a href="<?php echo htmlspecialchars($file['url']); ?>" target="_blank" class="dm-details-file-action" title="View"><i data-lucide="eye" size="14"></i></a>
+                                    <a href="<?php echo htmlspecialchars($file['url']); ?>" download class="dm-details-file-action" title="Download"><i data-lucide="download" size="14"></i></a>
                                 </div>
-                                <i data-lucide="download" size="18" class="dm-details-file-dl"></i>
-                            </a>
+                            </div>
                         <?php endforeach; ?>
                     </div>
-                    <div class="dm-details-empty" id="dmDetailsFilesEmpty"<?php echo !empty($conversation_files) ? ' hidden' : ''; ?>>No files shared yet</div>
+                    <div class="dm-details-empty<?php echo empty($conversation_files) ? ' dm-details-empty--show' : ''; ?>" id="dmDetailsFilesEmpty"<?php echo !empty($conversation_files) ? ' hidden' : ''; ?>>No files shared yet</div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentPinned" role="tabpanel"
                     hidden>
@@ -544,7 +558,7 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
                         <?php foreach ($pending_join_requests as $request): ?>
                         <div class="dm-details-request-row" data-request-id="<?php echo (int)$request['id']; ?>">
                             <div class="dm-details-request-info">
-                                <img src="<?php echo htmlspecialchars($request['avatar_url'] ?? ''); ?>"
+                                <img src="<?php echo htmlspecialchars(\App\Core\View::avatar($request['avatar_path'] ?? null)); ?>"
                                     alt="<?php echo htmlspecialchars($request['first_name'] . ' ' . $request['last_name']); ?>"
                                     class="dm-details-request-avatar">
                                 <div class="dm-details-request-user">

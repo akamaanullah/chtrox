@@ -1,7 +1,18 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # Static files directly serve karo
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
+
+    # URL ko query string mein pass karo
     RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "0"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
 </IfModule>

@@ -20,17 +20,21 @@
 <div class="stats-grid">
     <div class="stat-card">
         <span class="stat-label">TOTAL BROADCASTS</span>
-        <span class="stat-value">12</span>
+        <span class="stat-value"><?php echo count($announcements); ?></span>
         <div class="stat-line blue"></div>
     </div>
     <div class="stat-card">
+        <?php
+            $importantCount = count(array_filter($announcements, fn($a) => $a['tag'] === 'IMPORTANT'));
+            $celebrationCount = count(array_filter($announcements, fn($a) => $a['tag'] === 'CELEBRATION'));
+        ?>
         <span class="stat-label">IMPORTANT</span>
-        <span class="stat-value">4</span>
+        <span class="stat-value"><?php echo $importantCount; ?></span>
         <div class="stat-line red"></div>
     </div>
     <div class="stat-card">
         <span class="stat-label">CELEBRATIONS</span>
-        <span class="stat-value">3</span>
+        <span class="stat-value"><?php echo $celebrationCount; ?></span>
         <div class="stat-line orange"></div>
     </div>
     <div class="stat-card">
@@ -70,27 +74,37 @@
                 </tr>
             </thead>
             <tbody id="announcementsTableBody">
+<?php foreach ($announcements as $ann): ?>
+                <?php
+                    $emoji = '📢';
+                    if ($ann['tag'] === 'IMPORTANT') $emoji = '🚨';
+                    elseif ($ann['tag'] === 'CELEBRATION') $emoji = '🎂';
+                ?>
                 <tr class="ann-row" 
-                    data-id="1" 
-                    data-title="Quarterly Security Audit Reminder" 
-                    data-tag="IMPORTANT" 
-                    data-message="All departments are required to complete their quarterly security audit by the end of this week. Please ensure all access logs are reviewed and signed off."
-                    data-start="2023-10-12"
-                    data-end="2023-10-19">
+                    data-id="<?php echo \App\Core\View::e($ann['id']); ?>" 
+                    data-title="<?php echo \App\Core\View::e($ann['title']); ?>" 
+                    data-tag="<?php echo \App\Core\View::e($ann['tag']); ?>" 
+                    data-message="<?php echo \App\Core\View::e($ann['message']); ?>"
+                    data-start="<?php echo date('Y-m-d', strtotime($ann['start_date'])); ?>"
+                    data-end="<?php echo date('Y-m-d', strtotime($ann['end_date'])); ?>">
                     <td>
                         <div class="ann-tag">
-                            <span class="ann-emoji">🚨</span>
-                            <span class="tag-pill tag-important">IMPORTANT</span>
+                            <span class="ann-emoji"><?php echo $emoji; ?></span>
+                            <span class="tag-pill tag-<?php echo strtolower($ann['tag']); ?>"><?php echo \App\Core\View::e($ann['tag']); ?></span>
                         </div>
                     </td>
-                    <td><span class="text-dark font-600">Quarterly Security Audit Reminder</span></td>
+                    <td><span class="text-dark font-600"><?php echo \App\Core\View::e($ann['title']); ?></span></td>
                     <td>
                         <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">C</div>
-                            <span class="member-name admin-name">ChatroxAdmin</span>
+                            <?php if ($ann['avatar_path']): ?>
+                                <img src="<?php echo \App\Core\View::e($ann['avatar_path']); ?>" alt="" class="avatar-mini" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
+                            <?php else: ?>
+                                <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">A</div>
+                            <?php endif; ?>
+                            <span class="member-name admin-name"><?php echo \App\Core\View::e($ann['admin_name'] ?: 'ChatRox Admin'); ?></span>
                         </div>
                     </td>
-                    <td><span class="text-slate info-text">Oct 12, 2023</span></td>
+                    <td><span class="text-slate info-text"><?php echo date('M d, Y', strtotime($ann['created_at'])); ?></span></td>
                     <td class="text-right">
                         <div class="action-btns">
                             <button class="action-btn" title="View"><i data-lucide="eye"></i></button>
@@ -99,267 +113,7 @@
                         </div>
                     </td>
                 </tr>
-                <tr class="ann-row"
-                    data-id="2"
-                    data-title="Happy Birthday, Emma Williams!"
-                    data-tag="CELEBRATION"
-                    data-message="Let's all take a moment to wish Emma a very Happy Birthday! There will be cake in the breakroom at 3 PM."
-                    data-start="2023-10-10"
-                    data-end="2023-10-10">
-                    <td>
-                        <div class="ann-tag">
-                            <span class="ann-emoji">🎂</span>
-                            <span class="tag-pill tag-celebration">CELEBRATION</span>
-                        </div>
-                    </td>
-                    <td><span class="text-dark font-600">Happy Birthday, Emma Williams!</span></td>
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">C</div>
-                            <span class="member-name admin-name">ChatroxAdmin</span>
-                        </div>
-                    </td>
-                    <td><span class="text-slate info-text">Oct 10, 2023</span></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="View"><i data-lucide="eye"></i></button>
-                            <button class="action-btn js-open-edit-ann-modal" title="Edit"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="ann-row"
-                    data-id="3"
-                    data-title="System Maintenance Scheduled"
-                    data-tag="UPDATE"
-                    data-message="Please be advised that system maintenance is scheduled for this Sunday from 2 AM to 6 AM. Some services may be unavailable during this window."
-                    data-start="2023-10-08"
-                    data-end="2023-10-08">
-                    <td>
-                        <div class="ann-tag">
-                            <span class="ann-emoji">📢</span>
-                            <span class="tag-pill tag-update">UPDATE</span>
-                        </div>
-                    </td>
-                    <td><span class="text-dark font-600">System Maintenance Scheduled</span></td>
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">C</div>
-                            <span class="member-name admin-name">ChatroxAdmin</span>
-                        </div>
-                    </td>
-                    <td><span class="text-slate info-text">Oct 08, 2023</span></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="View"><i data-lucide="eye"></i></button>
-                            <button class="action-btn js-open-edit-ann-modal" title="Edit"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="ann-row"
-                    data-id="4"
-                    data-title="New Office Access Policy"
-                    data-tag="IMPORTANT"
-                    data-message="Starting next month, all employees must use the new digital keycards for office access. Physical keys will be phased out. Please collect your new card from HR."
-                    data-start="2023-10-05"
-                    data-end="2023-10-31">
-                    <td>
-                        <div class="ann-tag">
-                            <span class="ann-emoji">🚨</span>
-                            <span class="tag-pill tag-important">IMPORTANT</span>
-                        </div>
-                    </td>
-                    <td><span class="text-dark font-600">New Office Access Policy</span></td>
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">C</div>
-                            <span class="member-name admin-name">ChatroxAdmin</span>
-                        </div>
-                    </td>
-                    <td><span class="text-slate info-text">Oct 05, 2023</span></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="View"><i data-lucide="eye"></i></button>
-                            <button class="action-btn js-open-edit-ann-modal" title="Edit"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="ann-row"
-                    data-id="5"
-                    data-title="Project Phoenix Launch Success!"
-                    data-tag="CELEBRATION"
-                    data-message="We've successfully launched Project Phoenix! Huge thanks to the engineering and product teams for their hard work over the last 6 months."
-                    data-start="2023-10-01"
-                    data-end="2023-10-01">
-                    <td>
-                        <div class="ann-tag">
-                            <span class="ann-emoji">🎂</span>
-                            <span class="tag-pill tag-celebration">CELEBRATION</span>
-                        </div>
-                    </td>
-                    <td><span class="text-dark font-600">Project Phoenix Launch Success!</span></td>
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">C</div>
-                            <span class="member-name admin-name">ChatroxAdmin</span>
-                        </div>
-                    </td>
-                    <td><span class="text-slate info-text">Oct 01, 2023</span></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="View"><i data-lucide="eye"></i></button>
-                            <button class="action-btn js-open-edit-ann-modal" title="Edit"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="ann-row"
-                    data-id="6"
-                    data-title="Frontend Dashboard v2.0 Released"
-                    data-tag="UPDATE"
-                    data-message="Version 2.0 of our frontend dashboard is now live! This update includes the new analytics tab, improved navigation, and significant performance optimizations."
-                    data-start="2023-09-28"
-                    data-end="2023-09-28">
-                    <td>
-                        <div class="ann-tag">
-                            <span class="ann-emoji">📢</span>
-                            <span class="tag-pill tag-update">UPDATE</span>
-                        </div>
-                    </td>
-                    <td><span class="text-dark font-600">Frontend Dashboard v2.0 Released</span></td>
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">C</div>
-                            <span class="member-name admin-name">ChatroxAdmin</span>
-                        </div>
-                    </td>
-                    <td><span class="text-slate info-text">Sep 28, 2023</span></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="View"><i data-lucide="eye"></i></button>
-                            <button class="action-btn js-open-edit-ann-modal" title="Edit"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="ann-row"
-                    data-id="7"
-                    data-title="Company Trip Photos are Here!"
-                    data-tag="UPDATE"
-                    data-message="The photos from last week's company trip have been uploaded to the shared folder. Relive the fun and great moments we shared together!"
-                    data-start="2023-09-25"
-                    data-end="2023-09-30">
-                    <td>
-                        <div class="ann-tag">
-                            <span class="ann-emoji">📢</span>
-                            <span class="tag-pill tag-update">UPDATE</span>
-                        </div>
-                    </td>
-                    <td><span class="text-dark font-600">Company Trip Photos are Here!</span></td>
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">C</div>
-                            <span class="member-name admin-name">ChatroxAdmin</span>
-                        </div>
-                    </td>
-                    <td><span class="text-slate info-text">Sep 25, 2023</span></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="View"><i data-lucide="eye"></i></button>
-                            <button class="action-btn js-open-edit-ann-modal" title="Edit"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="ann-row"
-                    data-id="8"
-                    data-title="Urgent: Password Reset Required"
-                    data-tag="IMPORTANT"
-                    data-message="Due to a security update, all users are required to reset their forum passwords by tomorrow end of day. Please follow the instructions sent to your email."
-                    data-start="2023-09-20"
-                    data-end="2023-09-21">
-                    <td>
-                        <div class="ann-tag">
-                            <span class="ann-emoji">🚨</span>
-                            <span class="tag-pill tag-important">IMPORTANT</span>
-                        </div>
-                    </td>
-                    <td><span class="text-dark font-600">Urgent: Password Reset Required</span></td>
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">C</div>
-                            <span class="member-name admin-name">ChatroxAdmin</span>
-                        </div>
-                    </td>
-                    <td><span class="text-slate info-text">Sep 20, 2023</span></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="View"><i data-lucide="eye"></i></button>
-                            <button class="action-btn js-open-edit-ann-modal" title="Edit"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="ann-row"
-                    data-id="9"
-                    data-title="Welcome New Joiner: John Doe"
-                    data-tag="CELEBRATION"
-                    data-message="Please join us in welcoming John Doe to the engineering team as our new Lead Frontend Developer! We're excited to have him on board."
-                    data-start="2023-09-15"
-                    data-end="2023-09-15">
-                    <td>
-                        <div class="ann-tag">
-                            <span class="ann-emoji">🎂</span>
-                            <span class="tag-pill tag-celebration">CELEBRATION</span>
-                        </div>
-                    </td>
-                    <td><span class="text-dark font-600">Welcome New Joiner: John Doe</span></td>
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">C</div>
-                            <span class="member-name admin-name">ChatroxAdmin</span>
-                        </div>
-                    </td>
-                    <td><span class="text-slate info-text">Sep 15, 2023</span></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="View"><i data-lucide="eye"></i></button>
-                            <button class="action-btn js-open-edit-ann-modal" title="Edit"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="ann-row"
-                    data-id="10"
-                    data-title="Office Holiday Announcement"
-                    data-tag="IMPORTANT"
-                    data-message="The office will be closed next Monday in observance of the public holiday. Please ensure all critical tasks are handled beforehand. Enjoy the long weekend!"
-                    data-start="2023-09-10"
-                    data-end="2023-09-11">
-                    <td>
-                        <div class="ann-tag">
-                            <span class="ann-emoji">🚨</span>
-                            <span class="tag-pill tag-important">IMPORTANT</span>
-                        </div>
-                    </td>
-                    <td><span class="text-dark font-600">Office Holiday Announcement</span></td>
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">C</div>
-                            <span class="member-name admin-name">ChatroxAdmin</span>
-                        </div>
-                    </td>
-                    <td><span class="text-slate info-text">Sep 10, 2023</span></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="View"><i data-lucide="eye"></i></button>
-                            <button class="action-btn js-open-edit-ann-modal" title="Edit"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
+<?php endforeach; ?>
             </tbody>
         </table>
 

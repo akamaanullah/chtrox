@@ -3,19 +3,84 @@
  * Handles real-time connection, subscriptions, and custom DOM event dispatching.
  */
 (function () {
+    // --- Dynamic Audio Tone Synthesis using Web Audio API ---
+    window.ChatRoxAudio = window.ChatRoxAudio || {
+        play: function (tone) {
+            try {
+                if (!tone || tone === 'none') return;
+                
+                var ctx = new (window.AudioContext || window.webkitAudioContext)();
+                if (ctx.state === 'suspended') {
+                    ctx.resume();
+                }
+
+                if (tone === 'default' || tone === 'ding') {
+                    var osc = ctx.createOscillator();
+                    var gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(820, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(1250, ctx.currentTime + 0.12);
+                    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.28);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.3);
+                } else if (tone === 'chime') {
+                    var playBeep = function (freq, start, duration) {
+                        var osc = ctx.createOscillator();
+                        var gain = ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(freq, start);
+                        gain.gain.setValueAtTime(0.2, start);
+                        gain.gain.exponentialRampToValueAtTime(0.01, start + duration);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start(start);
+                        osc.stop(start + duration);
+                    };
+                    playBeep(523.25, ctx.currentTime, 0.12);
+                    playBeep(659.25, ctx.currentTime + 0.08, 0.18);
+                } else if (tone === 'pop') {
+                    var osc = ctx.createOscillator();
+                    var gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(140, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(580, ctx.currentTime + 0.06);
+                    gain.gain.setValueAtTime(0.4, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.12);
+                } else if (tone === 'ping') {
+                    var osc = ctx.createOscillator();
+                    var gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(980, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.005, ctx.currentTime + 0.45);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.5);
+                }
+            } catch (err) {
+                console.warn('[ChatRoxAudio] Web Audio API blocked or not supported:', err);
+            }
+        }
+    };
+
     if (!window.CHATROX || !window.CHATROX.user || !window.CHATROX.user.session_token) {
         console.warn('ChatRox WebSocket: Missing session token, skipping connection.');
         return;
     }
 
-    const token = window.CHATROX.user.session_token;
-    const workspaceId = window.CHATROX.user.workspace_id || '';
     const wsPort = window.CHATROX.wsPort || 8080;
     const hostname = window.location.hostname || '127.0.0.1';
     
     // Support secure ws connection if page runs on https
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${hostname}:${wsPort}?token=${token}&workspace_id=${workspaceId}`;
 
     let socket = null;
     let reconnectAttempts = 0;
@@ -31,8 +96,42 @@
         }
     }
 
-    function connect() {
-        console.log(`Connecting to WebSocket at ${wsUrl}...`);
+    async function fetchTicket() {
+        const url = (window.CHATROX.apiUrl || (window.CHATROX.baseUrl + '/api/v1')) + '/ws-ticket';
+        const response = await fetch(url, {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch WebSocket ticket: ${response.statusText}`);
+        }
+        const data = await response.json();
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        return data;
+    }
+
+    async function connect() {
+        console.log('Fetching WebSocket ticket...');
+        let ticketData;
+        try {
+            ticketData = await fetchTicket();
+        } catch (err) {
+            console.error('Failed to acquire WebSocket connection ticket:', err);
+            scheduleReconnect();
+            return;
+        }
+
+        const ticket = ticketData.ticket;
+        const workspaceId = ticketData.workspace_id;
+        const wsUrl = `${protocol}//${hostname}:${wsPort}?token=${ticket}&workspace_id=${workspaceId}`;
+
+        console.log(`Connecting to WebSocket at ${wsUrl.replace(ticket, '***')}...`);
         socket = new WebSocket(wsUrl);
 
         socket.onopen = function () {
@@ -141,6 +240,10 @@
         send('notify_members', payload);
     }
 
+    function updatePresence(status) {
+        send('presence_change', { status: status });
+    }
+
     // Expose WebSocket helper globally
     window.ChatRoxWS = {
         connect: connect,
@@ -149,6 +252,7 @@
         unsubscribe: unsubscribe,
         broadcast: broadcast,
         notifyMembers: notifyMembers,
+        updatePresence: updatePresence,
         getSocket: function () { return socket; }
     };
 
@@ -161,15 +265,32 @@
         if (!data || !data.workspace_member_id) return;
         
         const memberId = data.workspace_member_id;
-        const status = data.status; // online/offline
+        const status = data.status; // online/away/dnd/offline
 
-        // Update presence dots in Sidebar or contact listings
-        const presenceIndicators = document.querySelectorAll(`[data-member-id="${memberId}"] .presence-dot, [data-member-id="${memberId}"] .sidebar-member-avatar-status`);
+        // Update presence dots in Sidebar, chat header, or details panel
+        const presenceIndicators = document.querySelectorAll(`[data-member-id="${memberId}"] .presence-dot, [data-member-id="${memberId}"] .status-dot, [data-member-id="${memberId}"] .sidebar-member-avatar-status`);
         presenceIndicators.forEach(indicator => {
-            indicator.className = `presence-dot presence-dot--${status}`;
-            if (indicator.classList.contains('sidebar-member-avatar-status')) {
+            if (indicator.classList.contains('dm-chat-header-status')) {
+                indicator.className = `presence-dot dm-chat-header-status dm-chat-header-status--${status}`;
+            } else if (indicator.classList.contains('dm-details-status')) {
+                indicator.className = `presence-dot dm-details-status dm-details-status--${status}`;
+            } else if (indicator.classList.contains('sidebar-member-avatar-status')) {
                 indicator.className = `sidebar-member-avatar-status sidebar-member-avatar-status--${status}`;
+            } else if (indicator.classList.contains('status-dot')) {
+                indicator.className = `status-dot status-dot--${status}`;
+            } else {
+                indicator.className = `presence-dot presence-dot--${status}`;
             }
+        });
+
+        // Update presence text labels in real-time
+        const presenceLabels = document.querySelectorAll(`.presence-label[data-member-id="${memberId}"]`);
+        presenceLabels.forEach(label => {
+            let labelText = 'Offline';
+            if (status === 'online') labelText = 'Online';
+            else if (status === 'away') labelText = 'Away';
+            else if (status === 'dnd') labelText = 'Do Not Disturb';
+            label.textContent = labelText;
         });
     });
 
@@ -395,11 +516,14 @@
      */
     function clearDmUnreadBadge(username) {
         const sidebarItem = findDmSidebarItem(username);
+        console.log('[ChatRoxWS] clearDmUnreadBadge: sidebarItem =', sidebarItem);
         if (!sidebarItem) return;
         const unreadEl = sidebarItem.querySelector('.unread-count');
+        console.log('[ChatRoxWS] clearDmUnreadBadge: unreadEl =', unreadEl);
         if (unreadEl) {
             // Subtract the unread count before removing
             const count = parseInt(unreadEl.textContent, 10) || 0;
+            console.log('[ChatRoxWS] clearDmUnreadBadge: count =', count);
             if (count > 0) {
                 updateNavBadge('dms', -count);
                 updateHomeUnreadCount(-count);
@@ -443,10 +567,13 @@
      */
     function clearChannelUnreadBadge(channelId) {
         const sidebarItem = document.querySelector('.dir-list a[data-channel-id="' + channelId + '"]');
+        console.log('[ChatRoxWS] clearChannelUnreadBadge: sidebarItem =', sidebarItem);
         if (!sidebarItem) return;
         const unreadEl = sidebarItem.querySelector('.badge-dot');
+        console.log('[ChatRoxWS] clearChannelUnreadBadge: unreadEl =', unreadEl);
         if (unreadEl) {
             const count = parseInt(unreadEl.textContent, 10) || 0;
+            console.log('[ChatRoxWS] clearChannelUnreadBadge: count =', count);
             if (count > 0) {
                 updateNavBadge('channels', -count);
                 updateHomeUnreadCount(-count);
@@ -552,10 +679,13 @@
      */
     document.addEventListener('chatrox:conversation_opened', function (e) {
         const data = e.detail;
+        console.log('[ChatRoxWS] conversation_opened received:', data);
         if (!data) return;
         if (data.with_username) {
+            console.log('[ChatRoxWS] clearing DM badge for:', data.with_username);
             clearDmUnreadBadge(data.with_username);
         } else if (data.channel_id) {
+            console.log('[ChatRoxWS] clearing Channel badge for:', data.channel_id);
             clearChannelUnreadBadge(data.channel_id);
         }
         if (window.ChatRoxHomeLive) {
@@ -573,7 +703,7 @@
         receipt.setAttribute('title', label);
         receipt.setAttribute('aria-label', label);
         receipt.innerHTML = '<i data-lucide="' + icon + '"></i><span class="dm-read-receipt-label">' + label + '</span>';
-    }
+    }   
 
     function applyDmDeliveredReceipts(data) {
         if (!data || data.conversation_id == null || !data.message_ids || !data.message_ids.length) return;
@@ -691,65 +821,133 @@
         }
     });
 
-    // ─── Typing indicator — DM sidebar ────────────────────────────────────────
+    // ─── Typing indicator — DM & Channel sidebar ──────────────────────────────
     /**
-     * Stores per-username timeout handles for auto-clearing "typing..." after 5s.
+     * Stores per-username/conversation timeout handles for auto-clearing "typing..." after 5s.
      * Safety net in case typing_stop is never received (e.g. browser crash).
      */
     const _typingAutoStop = {};
 
     /**
-     * Show "typing..." in the DM sidebar preview under the sender's name.
+     * Find a Channel sidebar item by its conversation ID.
      */
-    function showSidebarTyping(senderUsername) {
-        const sidebarItem = findDmSidebarItem(senderUsername);
-        if (!sidebarItem) return;
+    function findChannelSidebarItem(conversationId) {
+        const channelList = document.querySelector('.dir-list');
+        if (!channelList || !conversationId) return null;
+        return channelList.querySelector('a[data-conversation-id="' + conversationId + '"]');
+    }
 
-        const previewEl = sidebarItem.querySelector('.dm-msg');
-        if (!previewEl) return;
+    /**
+     * Show "typing..." in the DM or Channel sidebar preview.
+     */
+    function showSidebarTyping(data) {
+        if (!data) return;
+        const conversationId = data.conversation_id;
+        const senderUsername = data.sender_username;
+        const senderName = data.sender_name || senderUsername;
+
+        // Try to find DM item
+        let sidebarItem = findDmSidebarItem(senderUsername);
+        let previewEl = null;
+        let isChannel = false;
+
+        if (sidebarItem) {
+            previewEl = sidebarItem.querySelector('.dm-msg');
+        } else {
+            // Try to find Channel item
+            sidebarItem = findChannelSidebarItem(conversationId);
+            if (sidebarItem) {
+                previewEl = sidebarItem.querySelector('.dir-meta');
+                isChannel = true;
+            }
+        }
+
+        if (!sidebarItem || !previewEl) return;
+
+        const timerKey = isChannel ? ('channel_' + conversationId + '_' + senderUsername) : ('dm_' + senderUsername);
 
         // Remember last real preview (never overwrite with "typing...")
         if (!sidebarItem.dataset.lastPreview) {
             const textEl = previewEl.querySelector('.dm-msg-text');
             const current = textEl ? textEl.textContent.trim() : previewEl.textContent.trim();
-            if (current && current !== 'typing...') {
+            if (current && current.indexOf('typing...') === -1 && current.indexOf('is typing') === -1) {
                 sidebarItem.dataset.lastPreview = current;
             }
         }
 
         // Replace with animated "typing..." label
-        previewEl.innerHTML = '<span class="dm-typing-label">typing...</span>';
-        sidebarItem.classList.add('dm-item--typing');
+        if (isChannel) {
+            previewEl.innerHTML = '<span class="dm-typing-label" style="color: var(--indigo-600); font-weight: 500;">' + senderName + ' is typing...</span>';
+            sidebarItem.classList.add('channel-item--typing');
+        } else {
+            previewEl.innerHTML = '<span class="dm-typing-label">typing...</span>';
+            sidebarItem.classList.add('dm-item--typing');
+        }
 
         // Auto-clear after 5s (safety net)
-        clearTimeout(_typingAutoStop[senderUsername]);
-        _typingAutoStop[senderUsername] = setTimeout(function () {
-            hideSidebarTyping(senderUsername);
+        clearTimeout(_typingAutoStop[timerKey]);
+        _typingAutoStop[timerKey] = setTimeout(function () {
+            hideSidebarTyping(data);
         }, 5000);
     }
 
     /**
-     * Restore last message preview after typing stops.
+     * Restore last preview after typing stops.
      */
-    function hideSidebarTyping(senderUsername) {
-        clearTimeout(_typingAutoStop[senderUsername]);
-        const sidebarItem = findDmSidebarItem(senderUsername);
-        if (!sidebarItem) return;
-        const previewEl = sidebarItem.querySelector('.dm-msg');
-        if (!previewEl) return;
+    function hideSidebarTyping(data) {
+        if (!data) return;
+        const conversationId = data.conversation_id;
+        const senderUsername = data.sender_username;
 
-        sidebarItem.classList.remove('dm-item--typing');
+        let sidebarItem = findDmSidebarItem(senderUsername);
+        let previewEl = null;
+        let isChannel = false;
+
+        if (sidebarItem) {
+            previewEl = sidebarItem.querySelector('.dm-msg');
+        } else {
+            sidebarItem = findChannelSidebarItem(conversationId);
+            if (sidebarItem) {
+                previewEl = sidebarItem.querySelector('.dir-meta');
+                isChannel = true;
+            }
+        }
+
+        if (!sidebarItem || !previewEl) return;
+
+        const timerKey = isChannel ? ('channel_' + conversationId + '_' + senderUsername) : ('dm_' + senderUsername);
+        clearTimeout(_typingAutoStop[timerKey]);
+
+        if (isChannel) {
+            sidebarItem.classList.remove('channel-item--typing');
+        } else {
+            sidebarItem.classList.remove('dm-item--typing');
+        }
         delete sidebarItem.dataset.originalPreview;
 
         const restore = (sidebarItem.dataset.lastPreview || '').trim();
-        const readStatus = sidebarItem.dataset.lastIsMine === '1'
+        const readStatus = (!isChannel && sidebarItem.dataset.lastIsMine === '1')
             ? (sidebarItem.dataset.lastReadStatus || 'sent')
             : null;
-        if (restore && restore !== 'typing...') {
-            renderSidebarPreview(sidebarItem, restore, readStatus);
-        } else if (previewEl.querySelector('.dm-typing-label')) {
-            previewEl.innerHTML = '<span class="dm-msg-text"></span>';
+
+        if (restore && restore.indexOf('typing...') === -1 && restore.indexOf('is typing') === -1) {
+            if (isChannel) {
+                previewEl.textContent = restore;
+            } else {
+                renderSidebarPreview(sidebarItem, restore, readStatus);
+            }
+        } else {
+            if (isChannel) {
+                previewEl.textContent = '2 members'; // default fallback
+            } else {
+                if (previewEl.querySelector('.dm-typing-label')) {
+                    previewEl.innerHTML = '<span class="dm-msg-text"></span>';
+                }
+            }
         }
+        
+        // Clean up stored state so next time we capture updated values correctly
+        delete sidebarItem.dataset.lastPreview;
     }
 
     // Receive typing_start globally
@@ -759,8 +957,7 @@
         const currentMemberId = parseInt(window.CHATROX.user.workspace_member_id, 10);
         // Ignore our own typing events
         if (parseInt(data.sender_id, 10) === currentMemberId) return;
-        if (!data.sender_username) return;
-        showSidebarTyping(data.sender_username);
+        showSidebarTyping(data);
     });
 
     // Receive typing_stop globally
@@ -769,21 +966,35 @@
         if (!data) return;
         const currentMemberId = parseInt(window.CHATROX.user.workspace_member_id, 10);
         if (parseInt(data.sender_id, 10) === currentMemberId) return;
-        if (!data.sender_username) return;
-        hideSidebarTyping(data.sender_username);
+        hideSidebarTyping(data);
     });
 
-    // When a new message arrives, clear typing state (preview already updated above)
+    // When a new message arrives, clear typing state
     document.addEventListener('chatrox:new_message', function (e) {
         const msg = e.detail;
         if (!msg) return;
         const currentMemberId = parseInt(window.CHATROX.user.workspace_member_id, 10);
         if (parseInt(msg.sender_id, 10) !== currentMemberId && msg.sender_username) {
-            clearTimeout(_typingAutoStop[msg.sender_username]);
-            const sidebarItem = findDmSidebarItem(msg.sender_username);
+            const timerKey = msg.channel_id 
+                ? ('channel_' + msg.conversation_id + '_' + msg.sender_username)
+                : ('dm_' + msg.sender_username);
+            clearTimeout(_typingAutoStop[timerKey]);
+            const sidebarItem = msg.channel_id 
+                ? findChannelSidebarItem(msg.conversation_id) 
+                : findDmSidebarItem(msg.sender_username);
             if (sidebarItem) {
-                sidebarItem.classList.remove('dm-item--typing');
+                if (msg.channel_id) {
+                    sidebarItem.classList.remove('channel-item--typing');
+                    const previewEl = sidebarItem.querySelector('.dir-meta');
+                    const restore = (sidebarItem.dataset.lastPreview || '').trim();
+                    if (previewEl && restore && restore.indexOf('typing...') === -1 && restore.indexOf('is typing') === -1) {
+                        previewEl.textContent = restore;
+                    }
+                } else {
+                    sidebarItem.classList.remove('dm-item--typing');
+                }
                 delete sidebarItem.dataset.originalPreview;
+                delete sidebarItem.dataset.lastPreview;
             }
         }
     });
@@ -861,11 +1072,23 @@
 
         const isCurrentlyViewingAndActive = isCurrentlyViewing && !document.hidden;
 
-        if (!isCurrentlyViewingAndActive && Notification.permission === 'granted') {
-            const baseUrl = (window.CHATROX && window.CHATROX.baseUrl) ? String(window.CHATROX.baseUrl).replace(/\/+$/, '') : '';
+        if (!isCurrentlyViewingAndActive) {
+            // Play sound tone if presence status is NOT 'dnd'
+            const currentPresence = (window.CHATROX.user.presence_status || 'online').toLowerCase();
+            if (currentPresence !== 'dnd') {
+                const tone = (window.CHATROX.user.preferences && window.CHATROX.user.preferences.notification_settings)
+                    ? window.CHATROX.user.preferences.notification_settings.tone
+                    : 'default';
+                if (tone && tone !== 'none') {
+                    window.ChatRoxAudio.play(tone);
+                }
+            }
+
+            if (Notification.permission === 'granted') {
+                const baseUrl = (window.CHATROX && window.CHATROX.baseUrl) ? String(window.CHATROX.baseUrl).replace(/\/+$/, '') : '';
             const icon = msg.sender_avatar 
                 ? (msg.sender_avatar.startsWith('http') ? msg.sender_avatar : (baseUrl + '/' + msg.sender_avatar))
-                : (baseUrl + '/public/favicon.ico');
+                : (baseUrl + '/assets/images/logo.png');
 
             let title = msg.sender_name || 'New message';
             let body = stripHtml(msg.body).replace(/\s+/g, ' ').trim() || 'Sent a message';
@@ -894,8 +1117,9 @@
             const notification = new Notification(title, {
                 body: body,
                 icon: icon,
-                badge: baseUrl + '/public/favicon.ico',
-                tag: tag
+                badge: baseUrl + '/assets/images/logo.png',
+                tag: tag,
+                silent: true
             });
 
             notification.onclick = function (event) {
@@ -907,7 +1131,8 @@
                 notification.close();
             };
         }
-    });
+    }
+});
 
     document.addEventListener('chatrox:message_reaction', function (e) {
         const data = e.detail;
@@ -936,9 +1161,10 @@
 
             const notification = new Notification(title, {
                 body: body,
-                icon: baseUrl + '/public/favicon.ico',
-                badge: baseUrl + '/public/favicon.ico',
-                tag: 'reaction-' + (data.message_id || 'unknown')
+                icon: baseUrl + '/assets/images/logo.png',
+                badge: baseUrl + '/assets/images/logo.png',
+                tag: 'reaction-' + (data.message_id || 'unknown'),
+                silent: true
             });
 
             notification.onclick = function (event) {
@@ -959,6 +1185,16 @@
         // Increment Activity tab badge count
         updateNavBadge('activity', 1);
 
+        // Show in-app toast notification
+        if (window.ChatRoxToast) {
+            window.ChatRoxToast.info(`${data.display_name} requested to join #${data.channel_name}.`, 'Join request received');
+        }
+
+        // Auto-refresh Activity feed if user is currently looking at it
+        if (window.ChatRoxRouter && typeof window.ChatRoxRouter.currentPath === 'function' && window.ChatRoxRouter.currentPath() === 'activity') {
+            window.ChatRoxRouter.navigate('activity', { force: true, replace: true });
+        }
+
         // Show browser desktop notification if not actively looking at the activity page
         let isCurrentlyViewingActivity = false;
         if (window.ChatRoxRouter && typeof window.ChatRoxRouter.currentPath === 'function') {
@@ -976,9 +1212,10 @@
 
             const notification = new Notification(title, {
                 body: body,
-                icon: baseUrl + '/public/favicon.ico',
-                badge: baseUrl + '/public/favicon.ico',
-                tag: 'channel-join-request-' + data.channel_id
+                icon: baseUrl + '/assets/images/logo.png',
+                badge: baseUrl + '/assets/images/logo.png',
+                tag: 'channel-join-request-' + data.channel_id,
+                silent: true
             });
 
             notification.onclick = function (event) {
@@ -1001,6 +1238,16 @@
         // Increment Activity tab badge count
         updateNavBadge('activity', 1);
 
+        // Show in-app toast notification
+        if (window.ChatRoxToast) {
+            window.ChatRoxToast.success(`Your request to join #${data.channel_name} has been approved.`, 'Request Approved');
+        }
+
+        // Auto-refresh Activity feed if user is currently looking at it
+        if (window.ChatRoxRouter && typeof window.ChatRoxRouter.currentPath === 'function' && window.ChatRoxRouter.currentPath() === 'activity') {
+            window.ChatRoxRouter.navigate('activity', { force: true, replace: true });
+        }
+
         // Show browser desktop notification
         let isCurrentlyViewingChannel = false;
         const chatScreen = document.querySelector('.dm-chat-screen');
@@ -1018,9 +1265,10 @@
 
             const notification = new Notification(title, {
                 body: body,
-                icon: baseUrl + '/public/favicon.ico',
-                badge: baseUrl + '/public/favicon.ico',
-                tag: 'channel-join-approved-' + data.channel_id
+                icon: baseUrl + '/assets/images/logo.png',
+                badge: baseUrl + '/assets/images/logo.png',
+                tag: 'channel-join-approved-' + data.channel_id,
+                silent: true
             });
 
             notification.onclick = function (event) {
@@ -1043,6 +1291,16 @@
         // Increment Activity tab badge count
         updateNavBadge('activity', 1);
 
+        // Show in-app toast notification
+        if (window.ChatRoxToast) {
+            window.ChatRoxToast.error(`Your request to join #${data.channel_name} has been rejected.`, 'Request Rejected');
+        }
+
+        // Auto-refresh Activity feed if user is currently looking at it
+        if (window.ChatRoxRouter && typeof window.ChatRoxRouter.currentPath === 'function' && window.ChatRoxRouter.currentPath() === 'activity') {
+            window.ChatRoxRouter.navigate('activity', { force: true, replace: true });
+        }
+
         // Show browser desktop notification if not actively looking at the activity page
         let isCurrentlyViewingActivity = false;
         if (window.ChatRoxRouter && typeof window.ChatRoxRouter.currentPath === 'function') {
@@ -1060,9 +1318,10 @@
 
             const notification = new Notification(title, {
                 body: body,
-                icon: baseUrl + '/public/favicon.ico',
-                badge: baseUrl + '/public/favicon.ico',
-                tag: 'channel-join-rejected-' + data.channel_id
+                icon: baseUrl + '/assets/images/logo.png',
+                badge: baseUrl + '/assets/images/logo.png',
+                tag: 'channel-join-rejected-' + data.channel_id,
+                silent: true
             });
 
             notification.onclick = function (event) {
@@ -1086,6 +1345,7 @@
             }
         }
     });
+
 
     window.ChatRoxDmSidebar = {
         updateItem: updateDmSidebarItem,

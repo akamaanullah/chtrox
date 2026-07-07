@@ -42,16 +42,16 @@
 
 <div class="access-grid">
     <!-- Row 1 -->
-    <div class="access-card">
+    <a href="<?php echo \App\Core\View::url('admin/profile'); ?>" class="access-card">
         <div class="card-icon"><i data-lucide="user"></i></div>
         <div class="card-content">
             <h3>Account Settings</h3>
             <p>Edit your profile, update username and password, and manage account settings.</p>
         </div>
         <i data-lucide="chevron-right" class="arrow"></i>
-    </div>
+    </a>
 
-    <div class="access-card">
+    <a href="<?php echo \App\Core\View::url('admin/members'); ?>" class="access-card">
         <div class="card-icon"><i data-lucide="users"></i></div>
         <div class="card-content">
             <h3>Manage Your Workspace</h3>
@@ -59,9 +59,9 @@
             <span class="card-badge"><?php echo View::e((string) $stats['members']); ?> members</span>
         </div>
         <i data-lucide="chevron-right" class="arrow"></i>
-    </div>
+    </a>
 
-    <div class="access-card">
+    <a href="<?php echo \App\Core\View::url('admin/analytics'); ?>" class="access-card">
         <div class="card-icon"><i data-lucide="bar-chart-3"></i></div>
         <div class="card-content">
             <h3>Analytics</h3>
@@ -69,10 +69,10 @@
             <span class="card-badge pulse">Live</span>
         </div>
         <i data-lucide="chevron-right" class="arrow"></i>
-    </div>
+    </a>
 
     <!-- Row 2 -->
-    <div class="access-card">
+    <a href="<?php echo \App\Core\View::url('admin/channels'); ?>" class="access-card">
         <div class="card-icon highlight"><i data-lucide="hash"></i></div>
         <div class="card-content">
             <h3>Channels</h3>
@@ -80,18 +80,18 @@
             <span class="card-badge"><?php echo View::e((string) $stats['channels']); ?> active</span>
         </div>
         <i data-lucide="chevron-right" class="arrow"></i>
-    </div>
+    </a>
 
-    <div class="access-card">
+    <a href="<?php echo \App\Core\View::url('admin/announcements'); ?>" class="access-card">
         <div class="card-icon"><i data-lucide="megaphone"></i></div>
         <div class="card-content">
             <h3>Announcements</h3>
             <p>Create and manage announcements for your workspace members.</p>
         </div>
         <i data-lucide="chevron-right" class="arrow"></i>
-    </div>
+    </a>
 
-    <div class="access-card">
+    <a href="<?php echo \App\Core\View::url('admin/activity'); ?>" class="access-card">
         <div class="card-icon"><i data-lucide="activity"></i></div>
         <div class="card-content">
             <h3>Recent Activities</h3>
@@ -99,10 +99,10 @@
             <span class="card-badge"><?php echo View::e((string) $stats['activity_new']); ?> new</span>
         </div>
         <i data-lucide="chevron-right" class="arrow"></i>
-    </div>
+    </a>
 
     <!-- Row 3 -->
-    <div class="access-card">
+    <a href="<?php echo \App\Core\View::url('admin/members'); ?>" class="access-card">
         <div class="card-icon"><i data-lucide="rss"></i></div>
         <div class="card-content">
             <h3>Team Pulse</h3>
@@ -110,9 +110,9 @@
             <span class="card-badge pulse"><?php echo View::e((string) $stats['online']); ?> online</span>
         </div>
         <i data-lucide="chevron-right" class="arrow"></i>
-    </div>
+    </a>
 
-    <div class="access-card">
+    <a href="<?php echo \App\Core\View::url('home'); ?>" class="access-card">
         <div class="card-icon"><i data-lucide="bell"></i></div>
         <div class="card-content">
             <h3>Pending Pings</h3>
@@ -120,9 +120,9 @@
             <span class="card-badge red"><?php echo View::e((string) $stats['unread']); ?> unread</span>
         </div>
         <i data-lucide="chevron-right" class="arrow"></i>
-    </div>
+    </a>
 
-    <div class="access-card">
+    <a href="<?php echo \App\Core\View::url('admin/files'); ?>" class="access-card">
         <div class="card-icon"><i data-lucide="folder"></i></div>
         <div class="card-content">
             <h3>Files & Media</h3>
@@ -130,5 +130,5 @@
             <span class="card-badge"><?php echo View::e((string) $stats['files']); ?> files</span>
         </div>
         <i data-lucide="chevron-right" class="arrow"></i>
-    </div>
+    </a>
 </div>

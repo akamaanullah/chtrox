@@ -40,6 +40,15 @@ class SystemMessage
         return $messageType === 'system';
     }
 
+    public static function post(\PDO $db, int $workspaceId, int $conversationId, string $body, int $senderId, ?string $fallback = null): void
+    {
+        $stmt = $db->prepare("
+            INSERT INTO messages (workspace_id, conversation_id, sender_id, body, message_type)
+            VALUES (?, ?, ?, ?, 'system')
+        ");
+        $stmt->execute([$workspaceId, $conversationId, $senderId, $body]);
+    }
+
     public static function formatDisplay(string $body, string $actorName, string $createdAt): string
     {
         $actorName = trim($actorName) !== '' ? trim($actorName) : 'Someone';

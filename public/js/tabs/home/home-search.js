@@ -147,7 +147,7 @@
         container.hidden = false;
         container.innerHTML = '<div class="home-search-loading">Searching...</div>';
 
-        fetch(baseUrl() + '/api/search?q=' + encodeURIComponent(query) + '&limit=6', {
+        fetch((window.CHATROX.apiUrl || '') + '/search?q=' + encodeURIComponent(query) + '&limit=6', {
             method: 'GET',
             credentials: 'same-origin',
             headers: {

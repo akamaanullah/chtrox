@@ -73,7 +73,11 @@
     }
 
     function buildUrl(relativePath) {
-        relativePath = String(relativePath || '').replace(/^\/+/, '');
+        relativePath = String(relativePath || '');
+        if (relativePath.indexOf('://') !== -1 || relativePath.indexOf('//') === 0) {
+            return relativePath;
+        }
+        relativePath = relativePath.replace(/^\/+/, '');
         if (relativePath === 'home') relativePath = '';
 
         var base = getBaseUrl();
@@ -141,9 +145,11 @@
     }
 
     function updateSidebarActive(activeTab) {
+        var isMoreTab = ['files', 'browse-channels', 'settings'].indexOf(activeTab) !== -1;
+
         document.querySelectorAll('.sidebar .nav-item[data-nav-tab]').forEach(function (item) {
             var tab = item.getAttribute('data-nav-tab');
-            var isActive = tab === activeTab;
+            var isActive = (tab === activeTab) || (tab === 'more' && isMoreTab);
             item.classList.toggle('active', isActive);
             var bar = item.querySelector('.active-bar');
             if (isActive && !bar) {
@@ -159,7 +165,8 @@
             var href = opt.getAttribute('href') || '';
             var isFiles = activeTab === 'files' && href.indexOf('files') !== -1;
             var isBrowse = activeTab === 'browse-channels' && href.indexOf('browse-channels') !== -1;
-            opt.classList.toggle('active', isFiles || isBrowse);
+            var isSettings = activeTab === 'settings' && href.indexOf('settings') !== -1;
+            opt.classList.toggle('active', isFiles || isBrowse || isSettings);
         });
     }
 
@@ -199,10 +206,30 @@
         var subNavWrap = document.getElementById('app-sub-nav');
         var main = document.getElementById('app-main');
 
+        var scrollPositions = {};
+        if (subNavWrap) {
+            scrollPositions['sub-nav-root'] = subNavWrap.scrollTop;
+            var scrollable = subNavWrap.querySelectorAll('.dm-list, .dir-list');
+            scrollable.forEach(function (el, index) {
+                scrollPositions[index] = el.scrollTop;
+            });
+        }
+
         if (subNavWrap) {
             if (payload.sub_nav_html) {
                 subNavWrap.innerHTML = payload.sub_nav_html;
                 subNavWrap.hidden = false;
+                subNavWrap.classList.add('page-enter');
+
+                if (scrollPositions['sub-nav-root'] !== undefined) {
+                    subNavWrap.scrollTop = scrollPositions['sub-nav-root'];
+                }
+                var newScrollable = subNavWrap.querySelectorAll('.dm-list, .dir-list');
+                newScrollable.forEach(function (el, index) {
+                    if (scrollPositions[index] !== undefined) {
+                        el.scrollTop = scrollPositions[index];
+                    }
+                });
             } else {
                 subNavWrap.innerHTML = '';
                 subNavWrap.hidden = true;
@@ -211,6 +238,22 @@
 
         if (main) {
             main.innerHTML = payload.main_html || '';
+            main.classList.add('page-enter');
+        }
+
+        // Trigger reflow to apply the initial transition state, then remove the enter class in next frame
+        if (typeof requestAnimationFrame !== 'undefined') {
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    if (subNavWrap) subNavWrap.classList.remove('page-enter');
+                    if (main) main.classList.remove('page-enter');
+                });
+            });
+        } else {
+            setTimeout(function () {
+                if (subNavWrap) subNavWrap.classList.remove('page-enter');
+                if (main) main.classList.remove('page-enter');
+            }, 20);
         }
 
         if (global.ChatRoxLucide) {
@@ -245,7 +288,7 @@
     }
 
     function fetchPage(path, signal) {
-        var url = buildUrl('api/app/page') + '?path=' + encodeURIComponent(path);
+        var url = buildUrl('api/v1/app/page') + '?path=' + encodeURIComponent(path);
         return fetch(url, {
             method: 'GET',
             headers: {

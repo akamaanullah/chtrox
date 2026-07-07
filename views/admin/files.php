@@ -1,3 +1,39 @@
+<?php
+    $totalBytes = 0;
+    foreach ($files as $f) {
+        $totalBytes += $f['size_bytes'];
+    }
+    if ($totalBytes >= 1073741824) {
+        $storageLabel = number_format($totalBytes / 1073741824, 1) . ' GB';
+    } elseif ($totalBytes >= 1048576) {
+        $storageLabel = number_format($totalBytes / 1048576, 1) . ' MB';
+    } elseif ($totalBytes >= 1024) {
+        $storageLabel = number_format($totalBytes / 1024, 1) . ' KB';
+    } else {
+        $storageLabel = $totalBytes . ' B';
+    }
+    $percentage = $totalBytes > 0 ? min(100, round(($totalBytes / (10 * 1024 * 1024 * 1024)) * 100, 1)) : 0;
+
+    $exts = array_map(fn($f) => strtolower($f['extension']), $files);
+    $counts = array_count_values($exts);
+    arsort($counts);
+    $mostFrequent = !empty($counts) ? strtoupper(key($counts)) : 'N/A';
+
+    $recentCount = 0;
+    foreach ($files as $f) {
+        if (strtotime($f['date']) >= strtotime('-7 days')) {
+            $recentCount++;
+        }
+    }
+
+    $mediaFiles = array_filter($files, function($f) {
+        return in_array(strtolower($f['extension']), ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'mp4', 'mov', 'avi', 'mpeg']);
+    });
+
+    $docFiles = array_filter($files, function($f) {
+        return !in_array(strtolower($f['extension']), ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'mp4', 'mov', 'avi', 'mpeg']);
+    });
+?>
 <header class="content-header">
     <div class="greeting-area">
         <div class="greeting-icon">
@@ -15,25 +51,25 @@
     <div class="stat-card">
         <div class="stat-header">
             <span class="stat-label">STORAGE USED</span>
-            <span class="stat-badge neutral">25%</span>
+            <span class="stat-badge neutral"><?php echo $percentage; ?>%</span>
         </div>
-        <h2 class="stat-value">12.4 GB</h2>
+        <h2 class="stat-value"><?php echo $storageLabel; ?></h2>
         <div class="stat-line orange"></div>
     </div>
     <div class="stat-card">
         <div class="stat-header">
             <span class="stat-label">MOST FREQUENT</span>
-            <span class="stat-badge positive">Images</span>
+            <span class="stat-badge positive"><?php echo \App\Core\View::e($mostFrequent); ?></span>
         </div>
-        <h2 class="stat-value">4.2k</h2>
+        <h2 class="stat-value"><?php echo count($files) > 0 ? count($counts) : 0; ?> ext</h2>
         <div class="stat-line purple" style="background-color: #a855f7;"></div>
     </div>
     <div class="stat-card">
         <div class="stat-header">
             <span class="stat-label">RECENT UPLOADS</span>
-            <span class="stat-badge positive">+12</span>
+            <span class="stat-badge positive">+<?php echo $recentCount; ?></span>
         </div>
-        <h2 class="stat-value">128</h2>
+        <h2 class="stat-value"><?php echo $recentCount; ?></h2>
         <div class="stat-line green"></div>
     </div>
     <div class="stat-card">
@@ -41,7 +77,7 @@
             <span class="stat-label">TOTAL ASSETS</span>
             <span class="stat-badge neutral">Live</span>
         </div>
-        <h2 class="stat-value">5.8k</h2>
+        <h2 class="stat-value"><?php echo count($files); ?></h2>
         <div class="stat-line blue"></div>
     </div>
 </div>
@@ -70,91 +106,32 @@
         
         <!-- Media Grid (Images/Videos) -->
         <div id="mediaGrid" class="media-grid">
-        <!-- Mock Images -->
-        <div class="file-card media-item" data-category="images">
-            <div class="file-preview">
-                <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80" alt="Abstract Design">
-                <div class="file-actions-overlay">
-                    <div class="action-btns">
-                        <button class="action-btn" title="Preview"><i data-lucide="eye"></i></button>
-                        <button class="action-btn" title="Download"><i data-lucide="download"></i></button>
-                        <button class="action-btn delete" title="Delete"><i data-lucide="trash-2"></i></button>
+            <?php foreach ($mediaFiles as $mf): ?>
+                <?php
+                    $isVid = in_array(strtolower($mf['extension']), ['mp4', 'mov', 'avi', 'mpeg']);
+                    $fileUrl = BASE_URL . '/files/download/' . $mf['id'];
+                ?>
+                <div class="file-card media-item" data-category="media" data-id="<?php echo \App\Core\View::e($mf['id']); ?>" data-name="<?php echo \App\Core\View::e($mf['name']); ?>">
+                    <div class="file-preview <?php echo $isVid ? 'video' : ''; ?>">
+                        <?php if ($isVid): ?>
+                            <video src="<?php echo $fileUrl; ?>" style="width: 100%; height: 100%; object-fit: cover;"></video>
+                        <?php else: ?>
+                            <img src="<?php echo $fileUrl; ?>" alt="<?php echo \App\Core\View::e($mf['name']); ?>">
+                        <?php endif; ?>
+                        <div class="file-actions-overlay">
+                            <div class="action-btns">
+                                <button class="action-btn js-preview-media" data-id="<?php echo \App\Core\View::e($mf['id']); ?>" data-type="<?php echo $isVid ? 'video' : 'image'; ?>" data-url="<?php echo $fileUrl; ?>" title="Preview"><i data-lucide="eye"></i></button>
+                                <a href="<?php echo $fileUrl; ?>" class="action-btn" download title="Download"><i data-lucide="download"></i></a>
+                                <button class="action-btn delete" data-id="<?php echo \App\Core\View::e($mf['id']); ?>" title="Delete"><i data-lucide="trash-2"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="file-info-compact">
+                        <span class="file-name"><?php echo \App\Core\View::e($mf['name']); ?></span>
+                        <span class="file-meta"><?php echo $mf['size']; ?> • <?php echo ucfirst($mf['category'] ?: 'file'); ?></span>
                     </div>
                 </div>
-            </div>
-            <div class="file-info-compact">
-                <span class="file-name">abstract_design_v2.jpg</span>
-                <span class="file-meta">2.4 MB • Image</span>
-            </div>
-        </div>
-
-        <div class="file-card media-item" data-category="images">
-            <div class="file-preview">
-                <img src="https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400&q=80" alt="Team Meeting">
-                <div class="file-actions-overlay">
-                    <div class="action-btns">
-                        <button class="action-btn" title="Preview"><i data-lucide="eye"></i></button>
-                        <button class="action-btn" title="Download"><i data-lucide="download"></i></button>
-                        <button class="action-btn delete" title="Delete"><i data-lucide="trash-2"></i></button>
-                    </div>
-                </div>
-            </div>
-            <div class="file-info-compact">
-                <span class="file-name">team_sync_conference.png</span>
-                <span class="file-meta">4.1 MB • Image</span>
-            </div>
-        </div>
-
-        <div class="file-card media-item" data-category="videos">
-            <div class="file-preview video">
-                <img src="https://images.unsplash.com/photo-1485846234645-a62644f84728?w=400&q=80" alt="Product Demo">
-                <div class="file-actions-overlay">
-                    <div class="action-btns">
-                        <button class="action-btn" title="Preview"><i data-lucide="eye"></i></button>
-                        <button class="action-btn" title="Download"><i data-lucide="download"></i></button>
-                        <button class="action-btn delete" title="Delete"><i data-lucide="trash-2"></i></button>
-                    </div>
-                </div>
-            </div>
-            <div class="file-info-compact">
-                <span class="file-name">product_demo_final.mp4</span>
-                <span class="file-meta">48.5 MB • Video</span>
-            </div>
-        </div>
-
-         <div class="file-card media-item" data-category="videos">
-            <div class="file-preview video">
-                <img src="https://images.unsplash.com/photo-1485846234645-a62644f84728?w=400&q=80" alt="Product Demo">
-                <div class="file-actions-overlay">
-                    <div class="action-btns">
-                        <button class="action-btn" title="Preview"><i data-lucide="eye"></i></button>
-                        <button class="action-btn" title="Download"><i data-lucide="download"></i></button>
-                        <button class="action-btn delete" title="Delete"><i data-lucide="trash-2"></i></button>
-                    </div>
-                </div>
-            </div>
-            <div class="file-info-compact">
-                <span class="file-name">product_demo_final.mp4</span>
-                <span class="file-meta">48.5 MB • Video</span>
-            </div>
-        </div>
-
-         <div class="file-card media-item" data-category="videos">
-            <div class="file-preview video">
-                <img src="https://images.unsplash.com/photo-1485846234645-a62644f84728?w=400&q=80" alt="Product Demo">
-                <div class="file-actions-overlay">
-                    <div class="action-btns">
-                        <button class="action-btn" title="Preview"><i data-lucide="eye"></i></button>
-                        <button class="action-btn" title="Download"><i data-lucide="download"></i></button>
-                        <button class="action-btn delete" title="Delete"><i data-lucide="trash-2"></i></button>
-                    </div>
-                </div>
-            </div>
-            <div class="file-info-compact">
-                <span class="file-name">product_demo_final.mp4</span>
-                <span class="file-meta">48.5 MB • Video</span>
-            </div>
-        </div>
+            <?php endforeach; ?>
         </div>
     </div>
 
@@ -178,122 +155,40 @@
                     </tr>
                 </thead>
                 <tbody id="filesTableBody">
-                <tr class="file-row" data-category="docs">
-                    <td>
-                        <div class="file-name-cell">
-                            <div class="file-icon-box doc">
-                                <i data-lucide="file-text"></i>
-                            </div>
-                            <span class="text-dark font-600">Quarterly_Report_Q3.pdf</span>
-                        </div>
-                    </td>
-                    <td><span class="tag-pill tag-update">PDF</span></td>
-                    <td><span class="text-slate info-text">1.2 MB</span></td>
-                    <td>
-                        <div class="member-info-mini">
-                            <span class="text-dark font-600">Mahad Bukhari</span>
-                        </div>
-                    </td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="Download"><i data-lucide="download"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="file-row" data-category="docs">
-                    <td>
-                        <div class="file-name-cell">
-                            <div class="file-icon-box sheet">
-                                <i data-lucide="file-spreadsheet"></i>
-                            </div>
-                            <span class="text-dark font-600">Project_Phoenix_Budget.xlsx</span>
-                        </div>
-                    </td>
-                    <td><span class="tag-pill tag-important">EXCEL</span></td>
-                    <td><span class="text-slate info-text">856 KB</span></td>
-                    <td>
-                        <div class="member-info-mini">
-                            <span class="text-dark font-600">Emma Williams</span>
-                        </div>
-                    </td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="Download"><i data-lucide="download"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                 <tr class="file-row" data-category="docs">
-                    <td>
-                        <div class="file-name-cell">
-                            <div class="file-icon-box doc">
-                                <i data-lucide="file-text"></i>
-                            </div>
-                            <span class="text-dark font-600">Quarterly_Report_Q3.pdf</span>
-                        </div>
-                    </td>
-                    <td><span class="tag-pill tag-update">PDF</span></td>
-                    <td><span class="text-slate info-text">1.2 MB</span></td>
-                    <td>
-                        <div class="member-info-mini">
-                            <span class="text-dark font-600">Mahad Bukhari</span>
-                        </div>
-                    </td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="Download"><i data-lucide="download"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="file-row" data-category="docs">
-                    <td>
-                        <div class="file-name-cell">
-                            <div class="file-icon-box sheet">
-                                <i data-lucide="file-spreadsheet"></i>
-                            </div>
-                            <span class="text-dark font-600">Project_Phoenix_Budget.xlsx</span>
-                        </div>
-                    </td>
-                    <td><span class="tag-pill tag-important">EXCEL</span></td>
-                    <td><span class="text-slate info-text">856 KB</span></td>
-                    <td>
-                        <div class="member-info-mini">
-                            <span class="text-dark font-600">Emma Williams</span>
-                        </div>
-                    </td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="Download"><i data-lucide="download"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                 <tr class="file-row" data-category="docs">
-                    <td>
-                        <div class="file-name-cell">
-                            <div class="file-icon-box doc">
-                                <i data-lucide="file-text"></i>
-                            </div>
-                            <span class="text-dark font-600">Quarterly_Report_Q3.pdf</span>
-                        </div>
-                    </td>
-                    <td><span class="tag-pill tag-update">PDF</span></td>
-                    <td><span class="text-slate info-text">1.2 MB</span></td>
-                    <td>
-                        <div class="member-info-mini">
-                            <span class="text-dark font-600">Mahad Bukhari</span>
-                        </div>
-                    </td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn" title="Download"><i data-lucide="download"></i></button>
-                            <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-            </tbody>
+                    <?php foreach ($docFiles as $df): ?>
+                        <?php
+                            $fileUrl = BASE_URL . '/files/download/' . $df['id'];
+                            $docClass = 'doc';
+                            if ($df['icon'] === 'file-spreadsheet') $docClass = 'sheet';
+                            elseif ($df['icon'] === 'file-archive') $docClass = 'archive';
+                            elseif ($df['icon'] === 'file-code') $docClass = 'code';
+                        ?>
+                        <tr class="file-row" data-category="docs" data-id="<?php echo \App\Core\View::e($df['id']); ?>" data-name="<?php echo \App\Core\View::e($df['name']); ?>">
+                            <td>
+                                <div class="file-name-cell">
+                                    <div class="file-icon-box <?php echo $docClass; ?>">
+                                        <i data-lucide="<?php echo $df['icon']; ?>"></i>
+                                    </div>
+                                    <span class="text-dark font-600"><?php echo \App\Core\View::e($df['name']); ?></span>
+                                </div>
+                            </td>
+                            <td><span class="tag-pill tag-update"><?php echo strtoupper($df['extension']); ?></span></td>
+                            <td><span class="text-slate info-text"><?php echo $df['size']; ?></span></td>
+                            <td>
+                                <div class="member-info-mini">
+                                    <img src="<?php echo \App\Core\View::e($df['shared_avatar']); ?>" alt="" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover; margin-right: 6px;">
+                                    <span class="text-dark font-600"><?php echo \App\Core\View::e($df['shared_by']); ?></span>
+                                </div>
+                            </td>
+                            <td class="text-right">
+                                <div class="action-btns">
+                                    <a href="<?php echo $fileUrl; ?>" class="action-btn" download title="Download"><i data-lucide="download"></i></a>
+                                    <button class="action-btn delete" data-id="<?php echo \App\Core\View::e($df['id']); ?>" title="Remove"><i data-lucide="trash-2"></i></button>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
         </table>
     </div>
 </div>

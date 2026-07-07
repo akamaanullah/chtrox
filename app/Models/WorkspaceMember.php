@@ -72,10 +72,6 @@ class WorkspaceMember extends Model
                     VALUES (?, ?, 'member', 0)
                 ");
                 $insMember->execute([$ch['id'], $memberId]);
-
-                // Update member count
-                $updCount = $db->prepare("UPDATE channels SET member_count = member_count + 1 WHERE id = ?");
-                $updCount->execute([$ch['id']]);
             }
 
             // Check participant

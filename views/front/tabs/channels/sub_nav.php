@@ -15,8 +15,9 @@
         <h4 class="section-label">CHANNELS DIRECTORY</h4>
         <div class="dir-list">
             <?php foreach ($channel_sidebar_items as $item): ?>
-                <a href="channels/<?php echo htmlspecialchars($item['id']); ?>"
+                <a href="<?php echo \App\Core\View::url('channels/' . $item['id']); ?>"
                     data-channel-id="<?php echo htmlspecialchars($item['channel_id']); ?>"
+                    data-conversation-id="<?php echo htmlspecialchars($item['conversation_id']); ?>"
                     class="dir-item <?php echo ($active_channel_id === $item['id']) ? 'active' : ''; ?>">
                     <div class="dir-icon-box">
                         <?php echo htmlspecialchars($item['initials']); ?>

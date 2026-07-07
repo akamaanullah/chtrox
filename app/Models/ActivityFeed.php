@@ -34,7 +34,7 @@ class ActivityFeed extends Model
                 u.avatar_path,
                 u.username AS actor_username,
                 c.type AS conv_type,
-                ch.slug AS channel_slug,
+                COALESCE(ch.slug, ch_ref.slug) AS channel_slug,
                 cm_current.role AS current_channel_role,
                 cjr.id AS request_id
             FROM notifications n
@@ -42,13 +42,15 @@ class ActivityFeed extends Model
             LEFT JOIN users u ON u.id = wm.user_id
             LEFT JOIN messages m ON m.id = n.reference_id AND n.reference_type = 'message'
             LEFT JOIN conversations c ON c.id = m.conversation_id
-            LEFT JOIN channels ch ON ch.id = c.channel_id OR (ch.id = n.reference_id AND n.reference_type = 'channel')
+            LEFT JOIN channels ch ON ch.id = c.channel_id
+            LEFT JOIN channels ch_ref ON ch_ref.id = n.reference_id AND n.reference_type = 'channel'
             LEFT JOIN channel_members cm_current ON cm_current.channel_id = n.reference_id
                 AND cm_current.workspace_member_id = ?
                 AND cm_current.left_at IS NULL
             LEFT JOIN channel_join_requests cjr ON cjr.channel_id = n.reference_id
                 AND cjr.workspace_member_id = n.actor_id
                 AND cjr.status = 'pending'
+                AND n.title = 'Join request received'
             WHERE n.recipient_id = ?
               AND n.workspace_id = ?
               AND n.deleted_at IS NULL
@@ -71,12 +73,16 @@ class ActivityFeed extends Model
                 $type = 'channel-join';
             }
 
-            if ($row['notif_type'] === 'channel_join' && !empty($row['request_id']) && !in_array($row['current_channel_role'] ?? '', ['owner', 'admin'], true)) {
+            $isWorkspaceAdmin = in_array($currentRole, ['owner', 'admin'], true);
+            $isChannelAdmin = in_array($row['current_channel_role'] ?? '', ['owner', 'admin'], true);
+            $hasAdminAccess = $isWorkspaceAdmin || $isChannelAdmin;
+
+            if ($row['notif_type'] === 'channel_join' && !empty($row['request_id']) && !$hasAdminAccess) {
                 continue;
             }
 
             // Determine display name
-            $name = 'Chatrox System';
+            $name = 'ChatRox System';
             if ($row['first_name']) {
                 $name = $row['first_name'] . ' ' . $row['last_name'];
             } elseif ($row['title']) {
@@ -116,6 +122,7 @@ class ActivityFeed extends Model
                 'reference_type' => $row['reference_type'],
                 'reference_id' => (int)$row['reference_id'],
                 'current_channel_role' => $row['current_channel_role'] ?? null,
+                'has_admin_access' => $hasAdminAccess,
                 'request_id' => $row['request_id'] ? (int)$row['request_id'] : null
             ];
         }

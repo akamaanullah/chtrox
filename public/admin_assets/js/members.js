@@ -136,9 +136,42 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Initial load
-    updatePagination();
+    const urlParams = new URLSearchParams(window.location.search);
+    const statusParam = urlParams.get('status');
+    if (statusParam) {
+        if (statusParam.toLowerCase() === 'active' || statusParam.toLowerCase() === 'online') {
+            statusFilter.value = 'Active';
+        } else if (statusParam.toLowerCase() === 'offline') {
+            statusFilter.value = 'Offline';
+        }
+        applyFilters();
+    } else {
+        updatePagination();
+    }
 
-    // Modal Interactivity (Retaining existing logic with delegation for paginated rows)
+    // Helper to send AJAX requests
+    function adminAjax(url, method, data) {
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        if (window.CHATROX_ADMIN && window.CHATROX_ADMIN.csrfToken) {
+            headers['X-CSRF-Token'] = window.CHATROX_ADMIN.csrfToken;
+        }
+        return fetch(window.CHATROX_ADMIN.baseUrl + url, {
+            method: method,
+            headers: headers,
+            body: JSON.stringify(data)
+        }).then(res => {
+            return res.json().then(json => {
+                if (!res.ok) {
+                    throw new Error(json.error || 'Server error');
+                }
+                return json;
+            });
+        });
+    }
+
+    // Modal Interactivity
     const editModal = document.getElementById('editMemberModal');
     const addModal = document.getElementById('addMemberModal');
     const openAddBtn = document.querySelector('.invite-btn');
@@ -146,8 +179,9 @@ document.addEventListener('DOMContentLoaded', function () {
     function openEditModal(row) {
         const name = row.querySelector('.member-name').textContent;
         const email = row.querySelector('.member-email').textContent;
-        const role = row.querySelector('.role-badge').textContent.trim();
+        const role = row.dataset.role;
 
+        document.getElementById('editMemberId').value = row.dataset.id;
         document.getElementById('editName').value = name;
         document.getElementById('editEmail').value = email;
         document.getElementById('editRole').value = role;
@@ -163,6 +197,23 @@ document.addEventListener('DOMContentLoaded', function () {
         if (editBtn) {
             const row = editBtn.closest('.member-row');
             openEditModal(row);
+            return;
+        }
+
+        const deleteBtn = e.target.closest('.member-row .delete');
+        if (deleteBtn) {
+            const row = deleteBtn.closest('.member-row');
+            const memberId = row.dataset.id;
+            const name = row.querySelector('.member-name').textContent;
+            if (confirm(`Are you sure you want to remove ${name} from this workspace?`)) {
+                adminAjax('/api/admin/members', 'DELETE', { id: memberId })
+                    .then(res => {
+                        window.location.reload();
+                    })
+                    .catch(err => {
+                        alert(err.message);
+                    });
+            }
         }
     });
 
@@ -180,18 +231,156 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Save Logic (Simulated)
+    // Save Logic (Edit)
     const saveBtn = document.getElementById('saveEditBtn');
     if (saveBtn) {
         saveBtn.addEventListener('click', (e) => {
             e.preventDefault();
+            const id = document.getElementById('editMemberId').value;
+            const name = document.getElementById('editName').value;
+            const email = document.getElementById('editEmail').value;
+            const role = document.getElementById('editRole').value;
+            const password = document.getElementById('editPassword').value;
+
+            if (!name || !email) {
+                alert('Name and Email are required.');
+                return;
+            }
+
+            saveBtn.disabled = true;
             saveBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> <span>Saving...</span>';
-            lucide.createIcons();
-            setTimeout(() => {
-                utils.closeModal(editModal);
-                saveBtn.innerHTML = '<i data-lucide="check"></i> <span>Save Changes</span>';
-                lucide.createIcons();
-            }, 1000);
+            if (window.lucide) window.lucide.createIcons();
+
+            adminAjax('/api/admin/members', 'PATCH', { id, name, email, role, password })
+                .then(res => {
+                    utils.closeModal(editModal);
+                    window.location.reload();
+                })
+                .catch(err => {
+                    alert(err.message);
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = '<i data-lucide="check"></i> <span>Save Changes</span>';
+                    if (window.lucide) window.lucide.createIcons();
+                });
+        });
+    }
+
+    // Save Logic (Add)
+    const saveAddBtn = document.getElementById('saveAddBtn');
+    if (saveAddBtn) {
+        saveAddBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('addUsername').value.trim();
+            const email = document.getElementById('addEmail').value.trim();
+            const password = document.getElementById('addPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            if (!username || !email || !password || !confirmPassword) {
+                alert('All fields are required.');
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                alert('Passwords do not match.');
+                return;
+            }
+
+            saveAddBtn.disabled = true;
+            saveAddBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> <span>Adding...</span>';
+            if (window.lucide) window.lucide.createIcons();
+
+            adminAjax('/api/admin/members', 'POST', { username, email, password, confirmPassword })
+                .then(res => {
+                    utils.closeModal(addModal);
+                    window.location.reload();
+                })
+                .catch(err => {
+                    alert(err.message);
+                    saveAddBtn.disabled = false;
+                    saveAddBtn.innerHTML = '<i data-lucide="plus"></i> <span>Add Member</span>';
+                    if (window.lucide) window.lucide.createIcons();
+                });
+        });
+    }
+
+    // Generate Invite Link Modal Logic
+    const inviteModal = document.getElementById('generateInviteModal');
+    const openInviteBtn = document.querySelector('.generate-invite-btn');
+    const closeInviteBtn = document.getElementById('closeInviteModalBtn');
+    const submitInviteBtn = document.getElementById('btnSubmitGenerateInvite');
+    const copyInviteBtn = document.getElementById('btnCopyInviteUrl');
+    
+    if (openInviteBtn && inviteModal) {
+        openInviteBtn.addEventListener('click', () => {
+            document.getElementById('generateInviteForm').reset();
+            document.getElementById('inviteResultArea').style.display = 'none';
+            inviteModal.classList.add('active');
+        });
+    }
+
+    if (closeInviteBtn && inviteModal) {
+        closeInviteBtn.addEventListener('click', () => {
+            utils.closeModal(inviteModal);
+        });
+    }
+
+    if (submitInviteBtn) {
+        submitInviteBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('inviteEmail').value.trim();
+            const role = document.getElementById('inviteRole').value;
+
+            submitInviteBtn.disabled = true;
+            submitInviteBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> <span>Generating...</span>';
+            if (window.lucide) window.lucide.createIcons();
+
+            adminAjax('/api/admin/members/generate-invite', 'POST', { email, role })
+                .then(res => {
+                    submitInviteBtn.disabled = false;
+                    submitInviteBtn.innerHTML = '<i data-lucide="sparkles"></i> <span>Generate Invite Link</span>';
+                    if (window.lucide) window.lucide.createIcons();
+
+                    if (res.success) {
+                        const inputUrl = document.getElementById('generatedInviteUrl');
+                        inputUrl.value = res.join_url;
+                        document.getElementById('inviteResultArea').style.display = 'flex';
+                    }
+                })
+                .catch(err => {
+                    alert(err.message || 'Failed to generate invite link');
+                    submitInviteBtn.disabled = false;
+                    submitInviteBtn.innerHTML = '<i data-lucide="sparkles"></i> <span>Generate Invite Link</span>';
+                    if (window.lucide) window.lucide.createIcons();
+                });
+        });
+    }
+
+    if (copyInviteBtn) {
+        copyInviteBtn.addEventListener('click', () => {
+            const inputUrl = document.getElementById('generatedInviteUrl');
+            inputUrl.select();
+            inputUrl.setSelectionRange(0, 99999); // For mobile devices
+            
+            try {
+                navigator.clipboard.writeText(inputUrl.value)
+                    .then(() => {
+                        copyInviteBtn.innerHTML = '<i data-lucide="check"></i> <span>Copied!</span>';
+                        if (window.lucide) window.lucide.createIcons();
+                        setTimeout(() => {
+                            copyInviteBtn.innerHTML = '<i data-lucide="copy" size="14"></i> <span>Copy</span>';
+                            if (window.lucide) window.lucide.createIcons();
+                        }, 2000);
+                    });
+            } catch (e) {
+                // Fallback
+                document.execCommand('copy');
+                copyInviteBtn.innerHTML = '<i data-lucide="check"></i> <span>Copied!</span>';
+                if (window.lucide) window.lucide.createIcons();
+                setTimeout(() => {
+                    copyInviteBtn.innerHTML = '<i data-lucide="copy" size="14"></i> <span>Copy</span>';
+                    if (window.lucide) window.lucide.createIcons();
+                }, 2000);
+            }
         });
     }
 

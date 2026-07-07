@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var trendOptions = {
         series: [{
             name: 'Messages',
-            data: [450, 680, 520, 890, 1100, 950, 1284]
+            data: [0, 0, 0, 0, 0, 0, 0]
         }],
         chart: {
             height: 350,
@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 2. DMs vs Channels (Donut Chart)
     var engagementOptions = {
-        series: [65, 35],
+        series: [50, 50],
         labels: ['Channels', 'Direct Messages'],
         chart: {
             type: 'donut',
@@ -82,7 +82,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var peakOptions = {
         series: [{
             name: 'Activity Level',
-            data: [10, 20, 15, 45, 85, 100, 90, 70, 40, 25, 15, 10]
+            data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
         chart: {
             type: 'bar',
@@ -116,7 +116,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var memberOptions = {
         series: [{
             name: 'New Joins',
-            data: [15, 28, 42, 35, 62, 85]
+            data: [0, 0, 0, 0, 0, 0]
         }],
         chart: {
             height: 350,
@@ -127,7 +127,7 @@ document.addEventListener('DOMContentLoaded', function () {
         colors: ['#3b82f6'],
         stroke: { width: 4, curve: 'smooth' },
         xaxis: {
-            categories: ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'],
+            categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
         },
         markers: {
             size: 6,
@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 5. File Distribution (Donut or Radial Bar)
     var fileOptions = {
-        series: [44, 55, 67, 83],
+        series: [0, 0, 0, 0],
         chart: {
             height: 350,
             type: 'radialBar',
@@ -160,13 +160,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         show: true,
                         label: 'Total',
                         formatter: function (w) {
-                            return '12.4GB'
+                            return '0 MB';
                         }
                     }
                 }
             }
         },
-        labels: ['Apples', 'Oranges', 'Bananas', 'Berries'],
         colors: ['#84cc16', '#3b82f6', '#f59e0b', '#ef4444'],
         labels: ['Images', 'Documents', 'Videos', 'Others'],
     };
@@ -178,7 +177,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var pinOptions = {
         series: [{
             name: 'Pins',
-            data: [4, 8, 12, 10, 15, 22]
+            data: [0, 0, 0, 0, 0, 0]
         }],
         chart: {
             height: 250,
@@ -198,4 +197,47 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var pinChart = new ApexCharts(document.querySelector("#pinTrendChart"), pinOptions);
     pinChart.render();
+
+    // Fetch and Load Live Analytics Data
+    fetch(window.CHATROX_ADMIN.baseUrl + '/api/admin/analytics/data')
+        .then(res => res.json())
+        .then(res => {
+            if (res.success) {
+                // Update Trend Line
+                trendChart.updateSeries([{ data: res.trend.data }]);
+                trendChart.updateOptions({ xaxis: { categories: res.trend.labels } });
+
+                // Update Donut
+                engagementChart.updateSeries(res.engagement.series);
+
+                // Update Peak Hour Bars
+                peakChart.updateSeries([{ data: res.peak.data }]);
+                peakChart.updateOptions({ xaxis: { categories: res.peak.labels } });
+
+                // Update Member Growth Line
+                memberChart.updateSeries([{ data: res.growth.data }]);
+                memberChart.updateOptions({ xaxis: { categories: res.growth.labels } });
+
+                // Update Files Radial Bar
+                fileChart.updateSeries(res.files.series);
+                fileChart.updateOptions({
+                    plotOptions: {
+                        radialBar: {
+                            dataLabels: {
+                                total: {
+                                    formatter: function () {
+                                        return res.files.total_formatted || '0 MB';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Update Pins Trend
+                pinChart.updateSeries([{ data: res.pins.data }]);
+                pinChart.updateOptions({ xaxis: { categories: res.pins.labels } });
+            }
+        })
+        .catch(err => console.error("Error loading analytics data:", err));
 });

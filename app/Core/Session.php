@@ -123,16 +123,19 @@ class Session
         return '<input type="hidden" name="_csrf_token" value="' . self::csrfToken() . '">';
     }
 
-    public static function verifyCsrf(): bool
+    public static function verifyCsrf(?string $token = null, bool $singleUse = true): bool
     {
-        $token = $_POST['_csrf_token'] ?? '';
+        if ($token === null) {
+            $token = $_POST['_csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+        }
 
         if ($token === '' || !hash_equals(self::csrfToken(), $token)) {
             return false;
         }
 
-        // Regenerate token after successful validation (single-use)
-        unset($_SESSION['_csrf_token']);
+        if ($singleUse) {
+            unset($_SESSION['_csrf_token']);
+        }
 
         return true;
     }

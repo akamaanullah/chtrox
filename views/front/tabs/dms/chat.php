@@ -19,14 +19,14 @@ $oldest_message_id = (int)($oldest_message_id ?? 0);
         <a href="dms" class="dm-chat-back" title="Back to DMs">
             <i data-lucide="arrow-left" size="20"></i>
         </a>
-        <div class="dm-chat-header-user">
+        <div class="dm-chat-header-user" data-member-id="<?php echo $with_user['id']; ?>">
             <div class="dm-chat-header-avatar">
                 <img src="<?php echo htmlspecialchars($with_user['avatar']); ?>" alt="">
-                <span class="dm-chat-header-status<?php echo empty($contact_profile['is_online']) ? ' dm-chat-header-status--offline' : ''; ?>"></span>
+                <span class="presence-dot dm-chat-header-status dm-chat-header-status--<?php echo htmlspecialchars($contact_profile['presence_status'] ?? 'offline'); ?>"></span>
             </div>
             <div class="dm-chat-header-info">
                 <h2 class="dm-chat-header-name"><?php echo $name; ?></h2>
-                <span class="dm-chat-header-meta"><?php echo htmlspecialchars($contact_profile['presence_label']); ?></span>
+                <span class="dm-chat-header-meta presence-label" data-member-id="<?php echo $with_user['id']; ?>"><?php echo htmlspecialchars($contact_profile['presence_label']); ?></span>
             </div>
         </div>
         <div class="dm-chat-header-actions">
@@ -103,7 +103,14 @@ $oldest_message_id = (int)($oldest_message_id ?? 0);
                             endif;
                             ?>
                         <?php elseif ($m['text']): ?>
-                            <p><?php echo $m['text']; ?></p>
+                            <?php 
+                            $cleaned = \App\Helpers\HtmlSanitizer::clean($m['text']);
+                            if (strpos($cleaned, '<pre>') !== false || strpos($cleaned, '<p>') === 0) {
+                                echo $cleaned;
+                            } else {
+                                echo '<p>' . $cleaned . '</p>';
+                            }
+                            ?>
                         <?php endif; ?>
 
                         <?php if (!empty($images)): ?>
@@ -423,10 +430,10 @@ $oldest_message_id = (int)($oldest_message_id ?? 0);
                 <div class="dm-details-content dm-details-content--profile" id="dmDetailsContentProfile"
                     role="tabpanel">
                     <div class="dm-details-profile">
-                        <div class="dm-details-avatar-wrap">
+                        <div class="dm-details-avatar-wrap" data-member-id="<?php echo $with_user['id']; ?>">
                             <img src="<?php echo htmlspecialchars($with_user['avatar']); ?>" alt=""
                                 class="dm-details-avatar">
-                            <span class="dm-details-status<?php echo empty($contact_profile['is_online']) ? ' dm-details-status--offline' : ''; ?>"></span>
+                            <span class="presence-dot dm-details-status dm-details-status--<?php echo htmlspecialchars($contact_profile['presence_status'] ?? 'offline'); ?>"></span>
                         </div>
                         <h3 class="dm-details-name"><?php echo $name; ?></h3>
                         <span class="dm-details-handle"><?php echo htmlspecialchars($contact_profile['handle']); ?></span>
@@ -434,7 +441,7 @@ $oldest_message_id = (int)($oldest_message_id ?? 0);
                             <span class="dm-details-bio-label">PROFESSIONAL BIO</span>
                             <p class="dm-details-bio"><?php echo htmlspecialchars($contact_profile['bio']); ?></p>
                         </div>
-                        <p class="dm-details-presence"><?php echo htmlspecialchars($contact_profile['presence_label']); ?></p>
+                        <p class="dm-details-presence presence-label" data-member-id="<?php echo $with_user['id']; ?>"><?php echo htmlspecialchars($contact_profile['presence_label']); ?></p>
                     </div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentMedia" role="tabpanel"
@@ -449,23 +456,28 @@ $oldest_message_id = (int)($oldest_message_id ?? 0);
                             </button>
                         <?php endforeach; ?>
                     </div>
-                    <div class="dm-details-empty" id="dmDetailsMediaEmpty"<?php echo !empty($conversation_media) ? ' hidden' : ''; ?>>No media shared yet</div>
+                    <div class="dm-details-empty<?php echo empty($conversation_media) ? ' dm-details-empty--show' : ''; ?>" id="dmDetailsMediaEmpty"<?php echo !empty($conversation_media) ? ' hidden' : ''; ?>>No media shared yet</div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentFiles" role="tabpanel"
                     hidden>
                     <div class="dm-details-files-list" id="dmDetailsFilesList">
                         <?php foreach ($conversation_files as $file): ?>
-                            <a href="<?php echo htmlspecialchars($file['url']); ?>" class="dm-details-file-row" download>
-                                <span class="dm-details-file-icon"><i data-lucide="file-text" size="18"></i></span>
-                                <div class="dm-details-file-info">
-                                    <span class="dm-details-file-name"><?php echo htmlspecialchars($file['name']); ?></span>
-                                    <span class="dm-details-file-size"><?php echo htmlspecialchars($file['size_label']); ?></span>
+                            <div class="dm-details-file-row">
+                                <a href="<?php echo htmlspecialchars($file['url']); ?>" target="_blank" class="dm-details-file-link" title="View file">
+                                    <span class="dm-details-file-icon"><i data-lucide="file-text" size="18"></i></span>
+                                    <div class="dm-details-file-info">
+                                        <span class="dm-details-file-name"><?php echo htmlspecialchars($file['name']); ?></span>
+                                        <span class="dm-details-file-size"><?php echo htmlspecialchars($file['size_label']); ?></span>
+                                    </div>
+                                </a>
+                                <div class="dm-details-file-actions">
+                                    <a href="<?php echo htmlspecialchars($file['url']); ?>" target="_blank" class="dm-details-file-action" title="View"><i data-lucide="eye" size="14"></i></a>
+                                    <a href="<?php echo htmlspecialchars($file['url']); ?>" download class="dm-details-file-action" title="Download"><i data-lucide="download" size="14"></i></a>
                                 </div>
-                                <i data-lucide="download" size="18" class="dm-details-file-dl"></i>
-                            </a>
+                            </div>
                         <?php endforeach; ?>
                     </div>
-                    <div class="dm-details-empty" id="dmDetailsFilesEmpty"<?php echo !empty($conversation_files) ? ' hidden' : ''; ?>>No files shared yet</div>
+                    <div class="dm-details-empty<?php echo empty($conversation_files) ? ' dm-details-empty--show' : ''; ?>" id="dmDetailsFilesEmpty"<?php echo !empty($conversation_files) ? ' hidden' : ''; ?>>No files shared yet</div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentPinned" role="tabpanel"
                     hidden>

@@ -23,18 +23,6 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.addEventListener('click', closeProfilePanel);
         });
 
-        var profileThemeField = document.getElementById('profileThemeField');
-        profilePanel.querySelectorAll('.js-theme-color-toggle').forEach(function (el) {
-            el.addEventListener('click', function () {
-                if (profileThemeField) profileThemeField.classList.toggle('theme-collapsed');
-            });
-            el.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    if (profileThemeField) profileThemeField.classList.toggle('theme-collapsed');
-                }
-            });
-        });
 
         function updateProfileChannelsActiveCount() {
             var list = document.getElementById('profileChannelsList');
@@ -54,7 +42,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     window.ChatRoxDialog.confirm('Leave #' + channel + '?', 'Leave Channel').then(function (confirmed) {
                         if (confirmed) {
                             btn.disabled = true;
-                            fetch(window.CHATROX.baseUrl + '/api/channels/leave', {
+                            fetch(window.CHATROX.apiUrl + '/channels/leave', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -130,8 +118,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 lastName = fullName.substring(spaceIndex + 1);
             }
 
-            return fetch(window.CHATROX.baseUrl + '/api/profile/update', {
-                method: 'POST',
+            return fetch(window.CHATROX.apiUrl + '/profile', {
+                method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     first_name: firstName,
@@ -214,7 +202,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Show a loading indicator/opacity
                 profilePanelAvatarImg.style.opacity = '0.5';
 
-                fetch(window.CHATROX.baseUrl + '/api/profile/avatar', {
+                fetch(window.CHATROX.apiUrl + '/profile/avatar', {
                     method: 'POST',
                     body: formData
                 })

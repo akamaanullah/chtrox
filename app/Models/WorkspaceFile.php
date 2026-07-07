@@ -57,28 +57,16 @@ class WorkspaceFile extends Model
                 'icon' => $icon,
                 'icon_class' => $iconClass,
                 'shared_by' => $row['shared_by'],
-                'shared_avatar' => $row['shared_avatar'] ?: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=150',
+                'shared_avatar' => \App\Core\View::avatar($row['shared_avatar']),
                 'shared_by_you' => (bool) ($row['uploaded_by'] === $memberId),
                 'date' => date('M d, Y', strtotime($row['created_at'])),
-                'size' => self::formatSize($row['size_bytes']),
+                'size' => \App\Helpers\FileUploadPolicy::formatSize($row['size_bytes']),
             ];
         }
 
         return $files;
     }
 
-    private static function formatSize(int $bytes): string
-    {
-        if ($bytes >= 1073741824) {
-            return number_format($bytes / 1073741824, 1) . ' GB';
-        } elseif ($bytes >= 1048576) {
-            return number_format($bytes / 1048576, 1) . ' MB';
-        } elseif ($bytes >= 1024) {
-            return number_format($bytes / 1024, 1) . ' KB';
-        } else {
-            return $bytes . ' B';
-        }
-    }
 
     public static function paginate(int $page = 1, int $perPage = 10): array
     {

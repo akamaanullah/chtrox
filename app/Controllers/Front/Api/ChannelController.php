@@ -8,6 +8,7 @@ use App\Core\Model;
 use App\Helpers\SystemMessage;
 use App\Models\ChannelJoinRequest;
 use App\Models\AuditLog;
+use App\Services\ChannelService;
 use PDO;
 
 class ChannelController extends Controller
@@ -24,162 +25,43 @@ class ChannelController extends Controller
         }
 
         $input = $this->getRequestInput();
-        $name = trim($input['name'] ?? '');
-        $description = trim($input['description'] ?? '');
-        $visibility = $input['visibility'] ?? 'public'; // public or private
+        $name = trim((string)($input['name'] ?? ''));
+        $description = trim((string)($input['description'] ?? ''));
+        $visibility = trim((string)($input['visibility'] ?? 'public'));
         $addAll = !empty($input['add_all_members']);
         $members = $input['members'] ?? [];
 
-        if (empty($name)) {
-            $this->jsonResponse(['error' => 'Channel name is required'], 400);
-        }
-
-        // Clean name (lowercase, replace spaces/underscores with dashes)
-        $cleanName = preg_replace('/[^a-zA-Z0-9_-]/', '', str_replace(' ', '-', strtolower($name)));
-        $cleanName = trim($cleanName, '-');
-        if (empty($cleanName)) {
-            $this->jsonResponse(['error' => 'Invalid channel name'], 400);
-        }
-
-        $db = Model::db();
-
-        // Check if name/slug already exists in this workspace
-        $stmt = $db->prepare("SELECT id FROM channels WHERE workspace_id = ? AND slug = ?");
-        $stmt->execute([$workspaceId, $cleanName]);
-        if ($stmt->fetch()) {
-            $this->jsonResponse(['error' => 'A channel with this name already exists'], 400);
-        }
-
-        $db->beginTransaction();
         try {
-            // 1. Insert into channels
-            $stmt = $db->prepare("
-                INSERT INTO channels (workspace_id, slug, name, description, visibility, status, created_by, member_count)
-                VALUES (?, ?, ?, ?, ?, 'active', ?, 1)
-            ");
-            $stmt->execute([$workspaceId, $cleanName, $name, $description, $visibility, $memberId]);
-            $channelId = $db->lastInsertId();
-
-            // 2. Insert into conversations
-            $stmt = $db->prepare("
-                INSERT INTO conversations (workspace_id, type, channel_id)
-                VALUES (?, 'channel', ?)
-            ");
-            $stmt->execute([$workspaceId, $channelId]);
-            $conversationId = $db->lastInsertId();
-
-            // 3. Add to channel_members (role: owner)
-            $stmt = $db->prepare("
-                INSERT INTO channel_members (channel_id, workspace_member_id, role)
-                VALUES (?, ?, 'owner')
-            ");
-            $stmt->execute([$channelId, $memberId]);
-
-            // 4. Add to conversation_participants
-            $stmt = $db->prepare("
-                INSERT INTO conversation_participants (conversation_id, workspace_member_id)
-                VALUES (?, ?)
-            ");
-            $stmt->execute([$conversationId, $memberId]);
-
-            // Process additions of other members
-            if ($addAll) {
-                // Fetch all active workspace members except the creator
-                $stmt = $db->prepare("SELECT id FROM workspace_members WHERE workspace_id = ? AND status = 'active' AND id != ?");
-                $stmt->execute([$workspaceId, $memberId]);
-                $membersToAdd = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
-            } else {
-                $membersToAdd = [];
-                foreach ($members as $m) {
-                    $m = (int)$m;
-                    if ($m > 0 && $m !== $memberId) {
-                        $membersToAdd[] = $m;
-                    }
-                }
-            }
-
-            foreach ($membersToAdd as $mId) {
-                // Add to channel_members (role: member)
-                $stmt = $db->prepare("
-                    INSERT INTO channel_members (channel_id, workspace_member_id, role)
-                    VALUES (?, ?, 'member')
-                ");
-                $stmt->execute([$channelId, $mId]);
-
-                // Add to conversation_participants
-                $stmt = $db->prepare("
-                    INSERT INTO conversation_participants (conversation_id, workspace_member_id)
-                    VALUES (?, ?)
-                ");
-                $stmt->execute([$conversationId, $mId]);
-            }
-
-            // Update member count on channel
-            $totalCount = 1 + count($membersToAdd);
-            $stmt = $db->prepare("UPDATE channels SET member_count = ? WHERE id = ?");
-            $stmt->execute([$totalCount, $channelId]);
-
-            // 5. Create starting system message
-            $stmt = $db->prepare("
-                INSERT INTO messages (workspace_id, conversation_id, sender_id, body, message_type)
-                VALUES (?, ?, ?, ?, 'system')
-            ");
-            $stmt->execute([$workspaceId, $conversationId, $memberId, SystemMessage::bodyChannelCreated()]);
-
-            // System messages for members added during channel creation
-            if (!empty($membersToAdd)) {
-                $inQuery = implode(',', array_fill(0, count($membersToAdd), '?'));
-                $stmt = $db->prepare("
-                    SELECT wm.id, u.first_name, u.last_name
-                    FROM workspace_members wm
-                    JOIN users u ON wm.user_id = u.id
-                    WHERE wm.id IN ($inQuery)
-                ");
-                $stmt->execute($membersToAdd);
-                $addedUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-                foreach ($addedUsers as $addedUser) {
-                    $addedName = trim($addedUser['first_name'] . ' ' . $addedUser['last_name']);
-                    $stmt = $db->prepare("
-                        INSERT INTO messages (workspace_id, conversation_id, sender_id, body, message_type)
-                        VALUES (?, ?, ?, ?, 'system')
-                    ");
-                    $stmt->execute([
-                        $workspaceId,
-                        $conversationId,
-                        $memberId,
-                        SystemMessage::bodyMemberAdded($addedName),
-                    ]);
-                }
-            }
-
-            // 6. Log audit action
-            $stmt = $db->prepare("
-                INSERT INTO audit_logs (workspace_id, actor_member_id, actor_label, status, activity_type, message)
-                VALUES (?, ?, ?, 'complete', 'channel_create', ?)
-            ");
-            $stmt->execute([
+            $channelService = new ChannelService();
+            $channelData = $channelService->create(
                 $workspaceId,
                 $memberId,
                 $displayName,
-                "Channel #{$name} created"
-            ]);
+                $name,
+                $description,
+                $visibility,
+                $addAll,
+                $members
+            );
 
-            $db->commit();
+            // Log activity audit trail
+            AuditLog::log(
+                $workspaceId,
+                $memberId,
+                $displayName,
+                'channel_create',
+                "Created channel #{$channelData['name']} ({$channelData['visibility']})"
+            );
 
             $this->jsonResponse([
                 'success' => true,
-                'channel' => [
-                    'id' => $channelId,
-                    'name' => '#' . $name,
-                    'slug' => $cleanName,
-                    'conversation_id' => $conversationId,
-                    'description' => $description
-                ]
+                'channel' => $channelData
             ]);
         } catch (\Exception $e) {
-            $db->rollBack();
-            $this->jsonResponse(['error' => 'Failed to create channel: ' . $e->getMessage()], 500);
+            \App\Core\ErrorHandler::logError($e);
+            $statusCode = $e->getCode() >= 400 && $e->getCode() < 600 ? $e->getCode() : 500;
+            $msg = APP_DEBUG ? 'Channel creation failed: ' . $e->getMessage() : 'Channel creation failed. Please try again.';
+            $this->jsonResponse(['error' => $msg], $statusCode);
         }
     }
 
@@ -235,7 +117,7 @@ class ChannelController extends Controller
             $displayName = ($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '');
             $isNewRequest = false;
 
-            if ($requestStatus === 'rejected') {
+            if ($requestStatus !== false) {
                 $stmt = $db->prepare("UPDATE channel_join_requests SET status = 'pending', updated_at = CURRENT_TIMESTAMP WHERE channel_id = ? AND workspace_member_id = ?");
                 $stmt->execute([$channelId, $memberId]);
                 $isNewRequest = true;
@@ -250,12 +132,13 @@ class ChannelController extends Controller
                 $workspaceId,
                 $memberId,
                 $displayName,
-                'channel_join_request_created',
+                'OTHER',
                 "Requested to join channel #{$channel['name']}"
             );
 
             // Notify channel owner/admins if new request
             if ($isNewRequest) {
+
                 $stmt = $db->prepare("
                     SELECT DISTINCT wm.id
                     FROM workspace_members wm
@@ -317,8 +200,13 @@ class ChannelController extends Controller
             ");
             $stmt->execute([$channel['conversation_id'], $memberId]);
 
-            $stmt = $db->prepare("UPDATE channels SET member_count = member_count + 1 WHERE id = ?");
-            $stmt->execute([$channelId]);
+            // MED-09: Sync member_count from real count to prevent drift
+            $stmt = $db->prepare("
+                UPDATE channels
+                SET member_count = (SELECT COUNT(*) FROM channel_members WHERE channel_id = ? AND left_at IS NULL)
+                WHERE id = ?
+            ");
+            $stmt->execute([$channelId, $channelId]);
 
             // System join message
             $stmt = $db->prepare("
@@ -328,6 +216,7 @@ class ChannelController extends Controller
             $stmt->execute([$workspaceId, $channel['conversation_id'], $memberId, SystemMessage::bodyMemberJoined()]);
 
             $db->commit();
+            \App\Helpers\Cache::invalidateConversationDashboardCache((int)$channel['conversation_id'], $workspaceId);
 
             $this->jsonResponse([
                 'success' => true,
@@ -336,7 +225,9 @@ class ChannelController extends Controller
             ]);
         } catch (\Exception $e) {
             $db->rollBack();
-            $this->jsonResponse(['error' => 'Failed to join channel: ' . $e->getMessage()], 500);
+            \App\Core\ErrorHandler::logError($e);
+            $msg = APP_DEBUG ? 'Failed to join channel: ' . $e->getMessage() : 'Failed to join channel due to an internal server error.';
+            $this->jsonResponse(['error' => $msg], 500);
         }
     }
 
@@ -482,8 +373,13 @@ class ChannelController extends Controller
             $stmt = $db->prepare("DELETE FROM conversation_participants WHERE conversation_id = ? AND workspace_member_id = ?");
             $stmt->execute([$channel['conversation_id'], $memberId]);
 
-            $stmt = $db->prepare("UPDATE channels SET member_count = GREATEST(member_count - 1, 0) WHERE id = ?");
-            $stmt->execute([$channelId]);
+            // MED-09: Sync member_count from real count to prevent drift
+            $stmt = $db->prepare("
+                UPDATE channels
+                SET member_count = (SELECT COUNT(*) FROM channel_members WHERE channel_id = ? AND left_at IS NULL)
+                WHERE id = ?
+            ");
+            $stmt->execute([$channelId, $channelId]);
 
             $systemMessages = [];
 
@@ -516,6 +412,7 @@ class ChannelController extends Controller
             }
 
             $db->commit();
+            \App\Helpers\Cache::invalidateConversationDashboardCache((int)$channel['conversation_id'], $workspaceId);
 
             $this->jsonResponse([
                 'success' => true,
@@ -525,7 +422,9 @@ class ChannelController extends Controller
             ]);
         } catch (\Exception $e) {
             $db->rollBack();
-            $this->jsonResponse(['error' => 'Failed to leave channel: ' . $e->getMessage()], 500);
+            \App\Core\ErrorHandler::logError($e);
+            $msg = APP_DEBUG ? 'Failed to leave channel: ' . $e->getMessage() : 'Failed to leave channel due to an internal server error.';
+            $this->jsonResponse(['error' => $msg], 500);
         }
     }
 
@@ -774,7 +673,7 @@ class ChannelController extends Controller
             // 6. Log audit action
             $stmt = $db->prepare("
                 INSERT INTO audit_logs (workspace_id, actor_member_id, actor_label, status, activity_type, message)
-                VALUES (?, ?, ?, 'complete', 'channel_update', ?)
+                VALUES (?, ?, ?, 'complete', 'OTHER', ?)
             ");
             $stmt->execute([
                 $workspaceId,
@@ -784,6 +683,7 @@ class ChannelController extends Controller
             ]);
 
             $db->commit();
+            \App\Helpers\Cache::invalidateConversationDashboardCache((int)$conversationId, $workspaceId);
 
             $this->jsonResponse([
                 'success' => true,
@@ -793,7 +693,9 @@ class ChannelController extends Controller
 
         } catch (\Exception $e) {
             $db->rollBack();
-            $this->jsonResponse(['error' => 'Failed to update channel: ' . $e->getMessage()], 500);
+            \App\Core\ErrorHandler::logError($e);
+            $msg = APP_DEBUG ? 'Failed to update channel: ' . $e->getMessage() : 'Failed to update channel due to an internal server error.';
+            $this->jsonResponse(['error' => $msg], 500);
         }
     }
 
@@ -889,8 +791,13 @@ class ChannelController extends Controller
             ");
             $stmt->execute([$conversationId, $requestingMemberId]);
 
-            $stmt = $db->prepare("UPDATE channels SET member_count = member_count + 1 WHERE id = ?");
-            $stmt->execute([$channelId]);
+            // MED-09: Sync member_count from real count to prevent drift
+            $stmt = $db->prepare("
+                UPDATE channels
+                SET member_count = (SELECT COUNT(*) FROM channel_members WHERE channel_id = ? AND left_at IS NULL)
+                WHERE id = ?
+            ");
+            $stmt->execute([$channelId, $channelId]);
 
             // System message: member approved
             $stmt = $db->prepare("
@@ -910,7 +817,7 @@ class ChannelController extends Controller
                 $workspaceId,
                 $memberId,
                 $user['first_name'] . ' ' . $user['last_name'],
-                'channel_join_request_approved',
+                'OTHER',
                 "Approved join request from {$requesterName} for channel #{$channel['name']}"
             );
 
@@ -928,7 +835,28 @@ class ChannelController extends Controller
                 $channelId
             ]);
 
+            // Update the "Join request received" notifications to show as approved
+            $adminName = $user['first_name'] . ' ' . $user['last_name'];
+            $stmt = $db->prepare("
+                UPDATE notifications 
+                SET title = 'Join request approved',
+                    body = ?
+                WHERE workspace_id = ? 
+                  AND type = 'channel_join' 
+                  AND actor_id = ? 
+                  AND reference_type = 'channel' 
+                  AND reference_id = ?
+                  AND title = 'Join request received'
+            ");
+            $stmt->execute([
+                "{$adminName} approved {$requesterName}'s request to join #" . $channel['name'] . ".",
+                $workspaceId,
+                $requestingMemberId,
+                $channelId
+            ]);
+
             $db->commit();
+            \App\Helpers\Cache::invalidateConversationDashboardCache((int)$conversationId, $workspaceId);
 
             $this->jsonResponse([
                 'success' => true,
@@ -940,7 +868,9 @@ class ChannelController extends Controller
             ]);
         } catch (\Exception $e) {
             $db->rollBack();
-            $this->jsonResponse(['error' => 'Failed to approve request: ' . $e->getMessage()], 500);
+            \App\Core\ErrorHandler::logError($e);
+            $msg = APP_DEBUG ? 'Failed to approve request: ' . $e->getMessage() : 'Failed to approve request due to an internal server error.';
+            $this->jsonResponse(['error' => $msg], 500);
         }
     }
 
@@ -1012,7 +942,7 @@ class ChannelController extends Controller
                 $workspaceId,
                 $memberId,
                 $user['first_name'] . ' ' . $user['last_name'],
-                'channel_join_request_rejected',
+                'OTHER',
                 "Rejected join request from {$requesterName} for channel #{$channel['name']}"
             );
 
@@ -1030,6 +960,26 @@ class ChannelController extends Controller
                 $channelId
             ]);
 
+            // Update the "Join request received" notifications to show as rejected
+            $adminName = $user['first_name'] . ' ' . $user['last_name'];
+            $stmt = $db->prepare("
+                UPDATE notifications 
+                SET title = 'Join request rejected',
+                    body = ?
+                WHERE workspace_id = ? 
+                  AND type = 'channel_join' 
+                  AND actor_id = ? 
+                  AND reference_type = 'channel' 
+                  AND reference_id = ?
+                  AND title = 'Join request received'
+            ");
+            $stmt->execute([
+                "{$adminName} rejected {$requesterName}'s request to join #" . $channel['name'] . ".",
+                $workspaceId,
+                $requestingMemberId,
+                $channelId
+            ]);
+
             $this->jsonResponse([
                 'success' => true,
                 'message' => 'Join request rejected successfully',
@@ -1038,7 +988,9 @@ class ChannelController extends Controller
                 'channel_id' => $channelId
             ]);
         } catch (\Exception $e) {
-            $this->jsonResponse(['error' => 'Failed to reject request: ' . $e->getMessage()], 500);
+            \App\Core\ErrorHandler::logError($e);
+            $msg = APP_DEBUG ? 'Failed to reject request: ' . $e->getMessage() : 'Failed to reject request due to an internal server error.';
+            $this->jsonResponse(['error' => $msg], 500);
         }
     }
 }

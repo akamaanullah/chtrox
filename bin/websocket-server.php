@@ -34,11 +34,13 @@ if (is_file($envPath)) {
 // Load configurations (DB defines, base url)
 require_once dirname(__DIR__) . '/config/config.php';
 
-$port = $_ENV['WS_PORT'] ?? 8080;
+$port = WS_PORT;
+$bind = WS_BIND;
 
 echo "==================================================\n";
 echo "🚀 ChatRox Real-Time WebSocket Server\n";
 echo "==================================================\n";
+echo "Bind: {$bind}\n";
 echo "Port: {$port}\n";
 echo "Time: " . date('Y-m-d H:i:s') . "\n";
 echo "Status: Running...\n";
@@ -46,14 +48,30 @@ echo "Press Ctrl+C to terminate the process.\n";
 echo "==================================================\n\n";
 
 try {
-    $server = IoServer::factory(
+    $loop = \React\EventLoop\Loop::get();
+    $socket = new \React\Socket\Server($bind . ':' . $port, $loop);
+
+    $chatServer = new ChatServer();
+
+    $server = new IoServer(
         new HttpServer(
             new WsServer(
-                new ChatServer()
+                $chatServer
             )
         ),
-        (int)$port
+        $socket,
+        $loop
     );
+
+    // Periodically revalidate active sessions and prune expired conversation caches every 5 minutes (300 seconds)
+    $loop->addPeriodicTimer(300, function() use ($chatServer) {
+        try {
+            $chatServer->revalidateActiveSessions();
+            $chatServer->pruneExpiredCache();
+        } catch (\Exception $e) {
+            echo "⚠️ Periodic timer error: " . $e->getMessage() . "\n";
+        }
+    });
 
     $server->run();
 } catch (\Exception $e) {

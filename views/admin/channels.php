@@ -20,22 +20,27 @@
 <div class="stats-grid">
     <div class="stat-card">
         <span class="stat-label">TOTAL CHANNELS</span>
-        <span class="stat-value">18</span>
+        <span class="stat-value"><?php echo count($channels); ?></span>
         <div class="stat-line green"></div>
     </div>
     <div class="stat-card">
+        <?php
+            $publicCount = count(array_filter($channels, fn($c) => $c['visibility'] === 'public'));
+            $privateCount = count(array_filter($channels, fn($c) => $c['visibility'] === 'private'));
+            $mostActive = !empty($channels) ? '#' . $channels[0]['name'] : '#general';
+        ?>
         <span class="stat-label">PUBLIC</span>
-        <span class="stat-value">12</span>
+        <span class="stat-value"><?php echo $publicCount; ?></span>
         <div class="stat-line blue"></div>
     </div>
     <div class="stat-card">
         <span class="stat-label">PRIVATE</span>
-        <span class="stat-value">6</span>
+        <span class="stat-value"><?php echo $privateCount; ?></span>
         <div class="stat-line orange"></div>
     </div>
     <div class="stat-card">
         <span class="stat-label">MOST ACTIVE</span>
-        <span class="stat-value">#general</span>
+        <span class="stat-value"><?php echo \App\Core\View::e($mostActive); ?></span>
         <div class="stat-line red"></div>
     </div>
 </div>
@@ -75,19 +80,30 @@
                 </tr>
             </thead>
             <tbody id="channelsTableBody">
-                <!-- Channel 1 -->
-                <tr class="channel-row">
+<?php foreach ($channels as $c): ?>
+                <tr class="channel-row" 
+                    data-id="<?php echo \App\Core\View::e($c['id']); ?>" 
+                    data-name="<?php echo \App\Core\View::e($c['name']); ?>" 
+                    data-topic="<?php echo \App\Core\View::e($c['description'] ?: 'No description provided'); ?>" 
+                    data-visibility="<?php echo \App\Core\View::e($c['visibility']); ?>"
+                    data-status="Active"
+                    data-members="<?php echo \App\Core\View::e($c['member_ids'] ?? ''); ?>"
+                    data-created-on="<?php echo date('M d, Y', strtotime($c['created_at'])); ?>">
                     <td>
                         <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
+                            <?php if ($c['visibility'] === 'private'): ?>
+                                <div class="avatar-mini" style="background: #fee2e2; color: #ef4444;"><i data-lucide="lock" size="14"></i></div>
+                            <?php else: ?>
+                                <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
+                            <?php endif; ?>
                             <div class="member-details">
-                                <span class="member-name">general</span>
+                                <span class="member-name"><?php echo \App\Core\View::e($c['name']); ?></span>
                             </div>
                         </div>
                     </td>
-                    <td><span class="text-slate">Main workspace discussions</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">12</span></td>
+                    <td><span class="text-slate"><?php echo \App\Core\View::e($c['description'] ?: 'No topic provided'); ?></span></td>
+                    <td><span class="role-badge <?php echo $c['visibility'] === 'private' ? 'private' : 'public'; ?>"><?php echo ucfirst($c['visibility']); ?></span></td>
+                    <td><span class="text-dark font-700"><?php echo \App\Core\View::e($c['member_count']); ?></span></td>
                     <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
                     <td class="text-right">
                         <div class="action-btns">
@@ -97,319 +113,7 @@
                         </div>
                     </td>
                 </tr>
-                <!-- Channel 2 -->
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: #fee2e2; color: #ef4444;"><i data-lucide="lock" size="14"></i></div>
-                            <div class="member-details">
-                                <span class="member-name">admin-only</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Confidential administrative talks</span></td>
-                    <td><span class="role-badge private">Private</span></td>
-                    <td><span class="text-dark font-700">3</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Channel 3 -->
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
-                            <div class="member-details">
-                                <span class="member-name">marketing</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Campaigns and social media sync</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">8</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Additional Mock Channels -->
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
-                            <div class="member-details"><span class="member-name">design-team</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">UI/UX assets and reviews</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">6</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: #fee2e2; color: #ef4444;"><i data-lucide="lock" size="14"></i></div>
-                            <div class="member-details"><span class="member-name">secret-project</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Top secret development</span></td>
-                    <td><span class="role-badge private">Private</span></td>
-                    <td><span class="text-dark font-700">4</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
-                            <div class="member-details"><span class="member-name">random</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Off-topic fun and memes</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">25</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
-                            <div class="member-details"><span class="member-name">help-desk</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Tech support and feedback</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">15</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: #fee2e2; color: #ef4444;"><i data-lucide="lock" size="14"></i></div>
-                            <div class="member-details"><span class="member-name">hr-portal</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Human resources announcements</span></td>
-                    <td><span class="role-badge private">Private</span></td>
-                    <td><span class="text-dark font-700">5</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
-                            <div class="member-details"><span class="member-name">announcements</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Company-wide news and updates</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">40</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
-                            <div class="member-details"><span class="member-name">frontend-dev</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">React and CSS discussions</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">10</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: #fee2e2; color: #ef4444;"><i data-lucide="lock" size="14"></i></div>
-                            <div class="member-details"><span class="member-name">backend-core</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">API and database infrastructure</span></td>
-                    <td><span class="role-badge private">Private</span></td>
-                    <td><span class="text-dark font-700">7</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
-                            <div class="member-details"><span class="member-name">devops</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">CI/CD and server management</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">3</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
-                            <div class="member-details"><span class="member-name">sales-crm</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Leads and customer tracking</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">12</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: #fee2e2; color: #ef4444;"><i data-lucide="lock" size="14"></i></div>
-                            <div class="member-details"><span class="member-name">legal-review</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Contracts and compliance files</span></td>
-                    <td><span class="role-badge private">Private</span></td>
-                    <td><span class="text-dark font-700">2</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
-                            <div class="member-details"><span class="member-name">social-media</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Posting schedules and viral trends</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">6</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
-                            <div class="member-details"><span class="member-name">feedback-loop</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Product feedback from beta users</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">30</span></td>
-                    <td><div class="status-indicator offline"><span class="dot"></span><span>Archived</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: #fee2e2; color: #ef4444;"><i data-lucide="lock" size="14"></i></div>
-                            <div class="member-details"><span class="member-name">leadership</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Executive strategy and planning</span></td>
-                    <td><span class="role-badge private">Private</span></td>
-                    <td><span class="text-dark font-700">5</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <tr class="channel-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini" style="background: var(--indigo-100); color: var(--indigo-600);">#</div>
-                            <div class="member-details"><span class="member-name">legacy-chat</span></div>
-                        </div>
-                    </td>
-                    <td><span class="text-slate">Old messages from previous platform</span></td>
-                    <td><span class="role-badge public">Public</span></td>
-                    <td><span class="text-dark font-700">0</span></td>
-                    <td><div class="status-indicator offline"><span class="dot"></span><span>Archived</span></div></td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn js-open-edit-channel-modal" title="Edit Channel"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Delete Channel"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
+<?php endforeach; ?>
             </tbody>
         </table>
 
@@ -518,60 +222,16 @@
                         <input type="text" class="cc-search" placeholder="Search people..." id="searchPeople">
                     </div>
                     <div class="cc-members-list custom-scrollbar" id="ccMembersList">
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Emma Williams</span>
-                                <span class="cc-member-handle">@emmawilliams</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="emma" class="cc-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Oliver Mitchell</span>
-                                <span class="cc-member-handle">@olivermitchell</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="oliver" class="cc-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Charlotte Anderson</span>
-                                <span class="cc-member-handle">@charlotteanderson</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="charlotte" class="cc-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Sophia Reynolds</span>
-                                <span class="cc-member-handle">@sophiareynolds</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="sophia" class="cc-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Liam Carter</span>
-                                <span class="cc-member-handle">@liamcarter</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="liam" class="cc-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1522071823991-b9671f9d7f1f?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Design Team</span>
-                                <span class="cc-member-handle">@designteam</span>
-                            </div>
-                            <input type="checkbox" name="members[]" value="design" class="cc-member-check">
-                        </label>
+                        <?php foreach ($members as $m): ?>
+                            <label class="cc-member-row cc-member-row-check">
+                                <img src="<?php echo \App\Core\View::e($m['avatar']); ?>" alt="" class="cc-member-avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
+                                <div class="cc-member-info">
+                                    <span class="cc-member-name cc-member-display-name"><?php echo \App\Core\View::e($m['name']); ?></span>
+                                    <span class="cc-member-handle">@<?php echo \App\Core\View::e($m['username']); ?></span>
+                                </div>
+                                <input type="checkbox" name="members[]" value="<?php echo \App\Core\View::e($m['id']); ?>" class="cc-member-check">
+                            </label>
+                        <?php endforeach; ?>
                     </div>
                 </div>
 
@@ -646,33 +306,16 @@
                         <input type="text" class="cc-search" placeholder="Search people..." id="editSearchPeople">
                     </div>
                     <div class="cc-members-list custom-scrollbar" id="editMembersList">
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Emma Williams</span>
-                                <span class="cc-member-handle">@emmawilliams</span>
-                            </div>
-                            <input type="checkbox" name="edit_members[]" value="emma" class="cc-member-check edit-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Oliver Mitchell</span>
-                                <span class="cc-member-handle">@olivermitchell</span>
-                            </div>
-                            <input type="checkbox" name="edit_members[]" value="oliver" class="cc-member-check edit-member-check">
-                        </label>
-                        <label class="cc-member-row">
-                            <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=150"
-                                alt="" class="cc-member-avatar">
-                            <div class="cc-member-info">
-                                <span class="cc-member-name">Charlotte Anderson</span>
-                                <span class="cc-member-handle">@charlotteanderson</span>
-                            </div>
-                            <input type="checkbox" name="edit_members[]" value="charlotte" class="cc-member-check edit-member-check">
-                        </label>
+                        <?php foreach ($members as $m): ?>
+                            <label class="cc-member-row cc-member-row-check">
+                                <img src="<?php echo \App\Core\View::e($m['avatar']); ?>" alt="" class="cc-member-avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
+                                <div class="cc-member-info">
+                                    <span class="cc-member-name cc-member-display-name"><?php echo \App\Core\View::e($m['name']); ?></span>
+                                    <span class="cc-member-handle">@<?php echo \App\Core\View::e($m['username']); ?></span>
+                                </div>
+                                <input type="checkbox" name="edit_members[]" value="<?php echo \App\Core\View::e($m['id']); ?>" class="cc-member-check edit-member-check">
+                            </label>
+                        <?php endforeach; ?>
                     </div>
                 </div>
 

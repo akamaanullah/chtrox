@@ -21,16 +21,11 @@ class BrowseChannel extends Model
         $stmt = $db->prepare("
             SELECT 
                 c.*,
-                EXISTS (
-                    SELECT 1 FROM channel_members cm 
-                    WHERE cm.channel_id = c.id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
-                ) as joined,
-                COALESCE((
-                    SELECT status FROM channel_join_requests r
-                    WHERE r.channel_id = c.id AND r.workspace_member_id = :member_id
-                    LIMIT 1
-                ), 'none') as request_status
+                (cm.id IS NOT NULL) as joined,
+                COALESCE(r.status, 'none') as request_status
             FROM channels c
+            LEFT JOIN channel_members cm ON cm.channel_id = c.id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
+            LEFT JOIN channel_join_requests r ON r.channel_id = c.id AND r.workspace_member_id = :member_id
             WHERE c.workspace_id = :workspace_id AND c.status = 'active'
             ORDER BY (c.visibility = 'public') DESC, c.name ASC
         ");

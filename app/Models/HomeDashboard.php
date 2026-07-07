@@ -14,10 +14,12 @@ class HomeDashboard extends Model
         $firstName = $user['first_name'] ?? 'User';
         $lastName = $user['last_name'] ?? '';
         $dateLabel = date('l, F j');
+        $workspaceName = $user['workspace_name'] ?? 'Office HQ';
 
         return [
             'user_name' => trim($firstName . ' ' . $lastName),
             'date_label' => $dateLabel,
+            'workspace_name' => $workspaceName,
         ];
     }
 
@@ -33,10 +35,15 @@ class HomeDashboard extends Model
 
         $stmt = self::db()->prepare("
             SELECT
-                SUM(CASE WHEN up.status = 'online' THEN 1 ELSE 0 END) as online_count,
+                SUM(CASE WHEN (
+                    SELECT status 
+                    FROM user_presence 
+                    WHERE user_id = wm.user_id 
+                    ORDER BY last_seen_at DESC, updated_at DESC 
+                    LIMIT 1
+                ) = 'online' THEN 1 ELSE 0 END) as online_count,
                 COUNT(*) as total_count
             FROM workspace_members wm
-            JOIN user_presence up ON wm.user_id = up.user_id
             WHERE wm.workspace_id = ?
               AND wm.status = 'active'
         ");
@@ -60,23 +67,19 @@ class HomeDashboard extends Model
         }
 
         $stmt = self::db()->prepare("
-            SELECT COUNT(*)
+            SELECT COUNT(m.id)
             FROM messages m
             JOIN conversations c ON m.conversation_id = c.id
             LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
+            LEFT JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.workspace_member_id = :member_id AND cp.left_at IS NULL
+            LEFT JOIN channel_members cm ON cm.channel_id = c.channel_id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
             WHERE m.workspace_id = :workspace_id
               AND m.sender_id != :member_id
               AND m.deleted_for_everyone_at IS NULL
               AND (
-                  (c.type IN ('dm', 'group_dm') AND EXISTS (
-                      SELECT 1 FROM conversation_participants cp
-                      WHERE cp.conversation_id = c.id AND cp.workspace_member_id = :member_id AND cp.left_at IS NULL
-                  ))
+                  (c.type IN ('dm', 'group_dm') AND cp.id IS NOT NULL)
                   OR
-                  (c.type = 'channel' AND EXISTS (
-                      SELECT 1 FROM channel_members cm
-                      WHERE cm.channel_id = c.channel_id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
-                  ))
+                  (c.type = 'channel' AND cm.id IS NOT NULL)
               )
               AND (crc.last_read_message_id IS NULL OR m.id > crc.last_read_message_id)
         ");
@@ -91,9 +94,21 @@ class HomeDashboard extends Model
     /** @return array<string, mixed> */
     public static function liveSummary(): array
     {
+        $user = Session::user();
+        $memberId = (int)($user['workspace_member_id'] ?? 0);
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
+
+        $cacheKey = "home_summary_{$memberId}_{$workspaceId}";
+        $cached = \App\Helpers\Cache::get($cacheKey);
+
+        // HIGH-09: Use database-backed cache with instant event invalidation to prevent stale updates
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         $online = self::onlineMemberCounts();
 
-        return [
+        $data = [
             'unread_count' => self::unreadMessageCount(),
             'online_count' => $online['online'],
             'total_members' => $online['total'],
@@ -105,6 +120,11 @@ class HomeDashboard extends Model
             'date_label' => self::greeting()['date_label'],
             'nav_badges' => Navigation::navBadgeCounts(),
         ];
+
+        // Cache for up to 60 seconds. State-changing actions will invalidate this key immediately.
+        \App\Helpers\Cache::set($cacheKey, $data, 60);
+
+        return $data;
     }
 
     public static function stats(): array
@@ -159,10 +179,13 @@ class HomeDashboard extends Model
                            WHERE cm.channel_id = c.id
                              AND cm.workspace_member_id = ?
                              AND cm.left_at IS NULL
-                       ) AS joined
+                       ) AS joined,
+                       (SELECT COUNT(*) FROM messages WHERE conversation_id = conv.id) as msg_count
                 FROM channels c
+                JOIN conversations conv ON conv.channel_id = c.id
                 WHERE c.workspace_id = ? AND c.visibility = 'public' AND c.status = 'active'
-                ORDER BY c.name ASC LIMIT 4
+                ORDER BY joined DESC, msg_count DESC, c.name ASC
+                LIMIT 4
             ");
             $stmt->execute([$memberId, $workspaceId]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
@@ -178,24 +201,65 @@ class HomeDashboard extends Model
 
         if (count($tags) < 4 && $workspaceId > 0) {
             $stmt = self::db()->prepare("
-                SELECT u.username, u.first_name, u.last_name
-                FROM workspace_members wm
+                SELECT u.username, u.first_name, u.last_name,
+                       (SELECT COUNT(*) FROM messages WHERE conversation_id = cp.conversation_id) as msg_count,
+                       (SELECT MAX(created_at) FROM messages WHERE conversation_id = cp.conversation_id) as last_msg_at
+                FROM conversation_participants cp
+                JOIN conversations conv ON conv.id = cp.conversation_id
+                JOIN conversation_participants cp2 ON cp2.conversation_id = conv.id AND cp2.workspace_member_id != cp.workspace_member_id
+                JOIN workspace_members wm ON wm.id = cp2.workspace_member_id
                 JOIN users u ON u.id = wm.user_id
-                WHERE wm.workspace_id = ? AND wm.status = 'active' AND wm.id != ?
-                ORDER BY u.first_name ASC
+                WHERE cp.workspace_member_id = ?
+                  AND conv.type = 'dm'
+                  AND wm.status = 'active'
+                  AND wm.workspace_id = ?
+                ORDER BY msg_count DESC, last_msg_at DESC, u.first_name ASC
                 LIMIT ?
             ");
-            $stmt->bindValue(1, $workspaceId, PDO::PARAM_INT);
-            $stmt->bindValue(2, $memberId, PDO::PARAM_INT);
+            $stmt->bindValue(1, $memberId, PDO::PARAM_INT);
+            $stmt->bindValue(2, $workspaceId, PDO::PARAM_INT);
             $stmt->bindValue(3, 4 - count($tags), PDO::PARAM_INT);
             $stmt->execute();
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            
+            $dmUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $addedUsernames = [];
+            foreach ($dmUsers as $row) {
                 $tags[] = [
                     'label' => '@' . $row['username'],
                     'type' => 'person',
                     'query' => $row['username'],
                     'username' => $row['username'],
                 ];
+                $addedUsernames[] = $row['username'];
+            }
+
+            if (count($tags) < 4) {
+                $placeholders = '';
+                $params = [$workspaceId, $memberId];
+                if (!empty($addedUsernames)) {
+                    $placeholders = ' AND u.username NOT IN (' . implode(',', array_fill(0, count($addedUsernames), '?')) . ')';
+                    $params = array_merge($params, $addedUsernames);
+                }
+                
+                $limitVal = 4 - count($tags);
+                $stmt = self::db()->prepare("
+                    SELECT u.username, u.first_name, u.last_name
+                    FROM workspace_members wm
+                    JOIN users u ON u.id = wm.user_id
+                    WHERE wm.workspace_id = ? AND wm.status = 'active' AND wm.id != ?
+                    $placeholders
+                    ORDER BY u.first_name ASC
+                    LIMIT $limitVal
+                ");
+                $stmt->execute($params);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $tags[] = [
+                        'label' => '@' . $row['username'],
+                        'type' => 'person',
+                        'query' => $row['username'],
+                        'username' => $row['username'],
+                    ];
+                }
             }
         }
 
@@ -416,33 +480,24 @@ class HomeDashboard extends Model
                 SUM(CASE WHEN unread_count = 0 THEN 1 ELSE 0 END) AS cleared,
                 COUNT(*) AS total
             FROM (
-                SELECT (
-                    SELECT COUNT(*)
-                    FROM messages m
-                    LEFT JOIN conversation_read_cursors crc
-                        ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
-                    WHERE m.conversation_id = c.id
-                      AND m.sender_id != :member_id
-                      AND m.deleted_for_everyone_at IS NULL
-                      AND (crc.last_read_message_id IS NULL OR m.id > crc.last_read_message_id)
-                ) AS unread_count
+                SELECT 
+                    c.id,
+                    COUNT(m.id) AS unread_count
                 FROM conversations c
+                LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id
+                LEFT JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.workspace_member_id = :member_id AND cp.left_at IS NULL
+                LEFT JOIN channel_members cm ON cm.channel_id = c.channel_id AND cm.workspace_member_id = :member_id AND cm.left_at IS NULL
+                LEFT JOIN messages m ON m.conversation_id = c.id 
+                    AND m.sender_id != :member_id 
+                    AND m.deleted_for_everyone_at IS NULL
+                    AND (crc.last_read_message_id IS NULL OR m.id > crc.last_read_message_id)
                 WHERE c.workspace_id = :workspace_id
                   AND (
-                      (c.type IN ('dm', 'group_dm') AND EXISTS (
-                          SELECT 1 FROM conversation_participants cp
-                          WHERE cp.conversation_id = c.id
-                            AND cp.workspace_member_id = :member_id
-                            AND cp.left_at IS NULL
-                      ))
+                      (c.type IN ('dm', 'group_dm') AND cp.id IS NOT NULL)
                       OR
-                      (c.type = 'channel' AND EXISTS (
-                          SELECT 1 FROM channel_members cm
-                          WHERE cm.channel_id = c.channel_id
-                            AND cm.workspace_member_id = :member_id
-                            AND cm.left_at IS NULL
-                      ))
+                      (c.type = 'channel' AND cm.id IS NOT NULL)
                   )
+                GROUP BY c.id
             ) AS conv_stats
         ");
         $stmt->execute([
@@ -456,9 +511,14 @@ class HomeDashboard extends Model
         $clearPercent = $total > 0 ? (int) round(($cleared / $total) * 100) : 100;
 
         $presenceStmt = $db->prepare("
-            SELECT SUM(CASE WHEN up.status = 'online' THEN 1 ELSE 0 END) AS online_count
+            SELECT SUM(CASE WHEN (
+                SELECT status 
+                FROM user_presence 
+                WHERE user_id = wm.user_id 
+                ORDER BY last_seen_at DESC, updated_at DESC 
+                LIMIT 1
+            ) = 'online' THEN 1 ELSE 0 END) AS online_count
             FROM workspace_members wm
-            JOIN user_presence up ON wm.user_id = up.user_id
             WHERE wm.workspace_id = :workspace_id
               AND wm.status = 'active'
         ");
@@ -479,8 +539,14 @@ class HomeDashboard extends Model
             SELECT COUNT(DISTINCT cm.workspace_member_id)
             FROM channel_members cm
             JOIN workspace_members wm ON wm.id = cm.workspace_member_id AND wm.status = 'active'
-            JOIN user_presence up ON up.user_id = wm.user_id AND up.status = 'online'
             WHERE cm.channel_id = ? AND cm.left_at IS NULL
+              AND (
+                  SELECT status 
+                  FROM user_presence 
+                  WHERE user_id = wm.user_id 
+                  ORDER BY last_seen_at DESC, updated_at DESC 
+                  LIMIT 1
+              ) = 'online'
         ");
         $stmt->execute([$channelId]);
 
@@ -494,7 +560,7 @@ class HomeDashboard extends Model
             SELECT up.status, up.last_seen_at
             FROM users u
             JOIN workspace_members wm ON wm.user_id = u.id AND wm.workspace_id = ?
-            JOIN user_presence up ON up.user_id = u.id
+            LEFT JOIN user_presence up ON up.user_id = u.id
             WHERE u.username = ?
             LIMIT 1
         ");
@@ -510,7 +576,7 @@ class HomeDashboard extends Model
         $stmt = self::db()->prepare("
             SELECT up.status, up.last_seen_at
             FROM workspace_members wm
-            JOIN user_presence up ON up.user_id = wm.user_id
+            LEFT JOIN user_presence up ON up.user_id = wm.user_id
             WHERE wm.id = ?
             LIMIT 1
         ");
@@ -523,26 +589,7 @@ class HomeDashboard extends Model
     /** @return array{label: string, online: bool} */
     private static function formatPresence(string $status, ?string $lastSeenAt): array
     {
-        if ($status === 'online') {
-            return ['label' => 'Active now', 'online' => true];
-        }
-
-        if (!$lastSeenAt) {
-            return ['label' => 'Offline', 'online' => false];
-        }
-
-        $diff = time() - strtotime($lastSeenAt);
-        if ($diff < 60) {
-            return ['label' => 'Active just now', 'online' => false];
-        }
-        if ($diff < 3600) {
-            return ['label' => 'Active ' . (int) floor($diff / 60) . 'm ago', 'online' => false];
-        }
-        if ($diff < 86400) {
-            return ['label' => 'Active ' . (int) floor($diff / 3600) . 'h ago', 'online' => false];
-        }
-
-        return ['label' => 'Active ' . (int) floor($diff / 86400) . 'd ago', 'online' => false];
+        return \App\Helpers\TimeFormatter::formatPresence($status, $lastSeenAt);
     }
 
     private static function notificationSymbol(string $type): string
@@ -596,21 +643,22 @@ class HomeDashboard extends Model
     private static function truncateText(string $text, int $maxLen): string
     {
         $text = trim(strip_tags($text));
-        if (strlen($text) <= $maxLen) {
+        // LOW-10: Use mb_strlen/mb_substr for correct multibyte (Unicode) character counting
+        if (mb_strlen($text) <= $maxLen) {
             return $text;
         }
 
-        return substr($text, 0, $maxLen - 1) . '…';
+        return mb_substr($text, 0, $maxLen - 1) . '…';
     }
 
     public static function worldClocks(): array
     {
-        // Static timezone configurations as requested by the user
+        // LOW-08: Use valid PHP DateTimeZone timezone identifiers (IANA)
         return [
-            ['id' => 'pk', 'label' => 'Pakistan', 'timezone' => 'PK'],
-            ['id' => 'hou', 'label' => 'Houston', 'timezone' => 'HOU'],
-            ['id' => 'ny', 'label' => 'New York', 'timezone' => 'NY'],
-            ['id' => 'phx', 'label' => 'Phoenix', 'timezone' => 'PHX'],
+            ['id' => 'pk',  'label' => 'Pakistan',  'timezone' => 'Asia/Karachi'],
+            ['id' => 'hou', 'label' => 'Houston',   'timezone' => 'America/Chicago'],
+            ['id' => 'ny',  'label' => 'New York',  'timezone' => 'America/New_York'],
+            ['id' => 'phx', 'label' => 'Phoenix',   'timezone' => 'America/Phoenix'],
         ];
     }
 

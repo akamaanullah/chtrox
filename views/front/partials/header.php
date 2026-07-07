@@ -17,6 +17,7 @@
     <script src="<?php echo \App\Core\View::asset('js/themes-shared.js'); ?>"></script>
     <script>if (window.ChatroxTheme) { ChatroxTheme.applySaved(); }</script>
     <script src="https://unpkg.com/lucide@0.468.0" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
 </head>
 
 <body>

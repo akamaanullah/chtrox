@@ -7,7 +7,7 @@ use App\Core\Session;
 
 class ForwardTarget extends Model
 {
-    private const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150';
+    private const DEFAULT_AVATAR = DEFAULT_AVATAR_URL;
 
     /**
      * People + joined channels the current user can forward a message to.

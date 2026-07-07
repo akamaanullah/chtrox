@@ -38,12 +38,47 @@ View::render('partials/panels/profile-panel.php', [
     'currentUser' => $currentUser,
     'joinedChannels' => $joinedChannels
 ]);
+
+$footerDb = \App\Core\Database::connection();
+$footerUserId = (int)($currentUser['id'] ?? 0);
+$footerPrefs = [
+    'theme_color' => 'indigo',
+    'notification_settings' => [
+        'all' => true,
+        'dm' => true,
+        'channels' => true,
+        'channel_requests' => true,
+        'mentions' => true,
+        'tone' => 'default'
+    ]
+];
+$footerPresence = 'online';
+
+if ($footerUserId > 0) {
+    $footerStmt = $footerDb->prepare("SELECT theme_color, notification_settings FROM user_preferences WHERE user_id = ? LIMIT 1");
+    $footerStmt->execute([$footerUserId]);
+    $footerPrefsRow = $footerStmt->fetch(PDO::FETCH_ASSOC);
+    if ($footerPrefsRow) {
+        $footerPrefs = [
+            'theme_color' => $footerPrefsRow['theme_color'] ?? 'indigo',
+            'notification_settings' => array_merge($footerPrefs['notification_settings'], json_decode($footerPrefsRow['notification_settings'] ?? '{}', true))
+        ];
+    }
+    $footerStmtPresence = $footerDb->prepare("SELECT status FROM user_presence WHERE user_id = ? LIMIT 1");
+    $footerStmtPresence->execute([$footerUserId]);
+    $footerPresenceRow = $footerStmtPresence->fetch(PDO::FETCH_ASSOC);
+    if ($footerPresenceRow) {
+        $footerPresence = $footerPresenceRow['status'] ?? 'online';
+    }
+}
 ?>
 <script>
     window.CHATROX = <?php echo json_encode([
         'integrations' => $integrations ?? [],
         'user' => [
             'id' => $currentUser['id'] ?? null,
+            'preferences' => $footerPrefs,
+            'presence_status' => $footerPresence,
             'workspace_member_id' => $currentUser['workspace_member_id'] ?? null,
             'workspace_id' => $currentUser['workspace_id'] ?? null,
             'session_token' => $currentUser['session_token'] ?? null,
@@ -56,8 +91,10 @@ View::render('partials/panels/profile-panel.php', [
             'job_title' => $currentUser['job_title'] ?? null
         ],
         'baseUrl' => BASE_URL,
+        'apiUrl' => BASE_URL . '/api/v1',
         'basePath' => rtrim((string)(parse_url(BASE_URL, PHP_URL_PATH) ?: ''), '/'),
-        'wsPort' => $_ENV['WS_PORT'] ?? 8080,
+        'wsPort' => WS_PORT,
+        'csrfToken' => \App\Core\Session::csrfToken(),
         'maxFileSizeBytes' => MAX_FILE_SIZE_BYTES,
         'maxFileSizeLabel' => \App\Helpers\FileUploadPolicy::formatSize(MAX_FILE_SIZE_BYTES),
     ], JSON_UNESCAPED_SLASHES); ?>;
@@ -74,7 +111,7 @@ View::render('partials/panels/profile-panel.php', [
             <p id="customConfirmMessage" style="font-size: 14px; color: var(--text-secondary, #475569); line-height: 1.5; margin: 0 0 24px 0; font-family: 'Inter', sans-serif;"></p>
             <div style="display: flex; gap: 12px; justify-content: center;">
                 <button type="button" id="customConfirmCancelBtn" class="profile-panel-btn profile-panel-btn--secondary" style="margin: 0; padding: 12px 20px; font-size: 14px; font-weight: 600; border-radius: 10px; cursor: pointer; flex: 1;">Cancel</button>
-                <button type="button" id="customConfirmOkBtn" class="profile-panel-btn profile-panel-btn--primary" style="margin: 0; padding: 12px 20px; font-size: 14px; font-weight: 600; border-radius: 10px; cursor: pointer; flex: 1; background: #0f766e; color: #ffffff;">Confirm</button>
+                <button type="button" id="customConfirmOkBtn" class="profile-panel-btn profile-panel-btn--primary" style="margin: 0; padding: 12px 20px; font-size: 14px; font-weight: 600; border-radius: 10px; cursor: pointer; flex: 1; background: var(--indigo-600, #4f46e5); color: #ffffff;">Confirm</button>
             </div>
         </div>
     </div>
@@ -141,6 +178,19 @@ View::render('partials/panels/profile-panel.php', [
         };
     })();
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" defer></script>
+<script>
+    window.highlightCodeBlocks = function (scope) {
+        if (window.Prism) {
+            var target = scope || document;
+            target.querySelectorAll('pre code').forEach(function (block) {
+                if (!block.className || block.className.indexOf('language-') === -1) {
+                    block.className = 'language-javascript';
+                }
+                Prism.highlightElement(block);
+            });
+        }
+    };
+</script>
 </body>
-
 </html>

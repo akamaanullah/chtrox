@@ -37,11 +37,12 @@ class People extends Model
             }
 
             $items[] = [
+                'username' => $row['username'],
                 'name' => $row['display_name'],
                 'role' => strtoupper($row['job_title'] ?: ($row['workspace_role'] ?: 'member')),
                 'email' => $row['email'],
                 'time' => $timeLabel,
-                'avatar' => $row['avatar_path'] ?: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150',
+                'avatar' => \App\Core\View::avatar($row['avatar_path']),
                 'status' => $row['presence_status'],
             ];
         }

@@ -130,10 +130,25 @@ SQL
         }
 
         $text = DmsConversation::bodyToPlainText($row['body'] ?? '', false);
-        if (strlen($text) > 80) {
-            $text = substr($text, 0, 80) . '…';
+        // LOW-10: Use mb_strlen/mb_substr for correct multibyte character counting
+        if (mb_strlen($text) > 80) {
+            $text = mb_substr($text, 0, 80) . '…';
         }
 
         return $text ?: 'Message';
+    }
+
+    public static function getReplySnippet(int $replyToId): string
+    {
+        $stmt = Model::db()->prepare("
+            SELECT id, body, message_type, deleted_for_everyone_at
+            FROM messages WHERE id = ?
+        ");
+        $stmt->execute([$replyToId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return '';
+        }
+        return self::buildReplySnippet($row);
     }
 }

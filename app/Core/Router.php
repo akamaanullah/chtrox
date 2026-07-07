@@ -49,6 +49,11 @@ class Router
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
         $url = '/' . ltrim($url, '/');
 
+        // HIGH-02: Run RateLimitMiddleware globally to enforce rate limits
+        if (class_exists('App\Middleware\RateLimitMiddleware')) {
+            (new \App\Middleware\RateLimitMiddleware())->handle();
+        }
+
         $methodRoutes = $this->routes[$method] ?? [];
 
         foreach ($methodRoutes as $route) {

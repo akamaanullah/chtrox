@@ -16,8 +16,16 @@ $sharedData = array_merge($pageData, [
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="ChatRox Admin — Manage members, channels, analytics and workspace settings.">
     <title><?php echo View::e($page_title); ?></title>
+    <meta name="csrf-token" content="<?php echo \App\Core\Session::csrfToken(); ?>">
     <link rel="icon" type="image/png" href="<?php echo View::asset('assets/images/logo.png'); ?>">
     <link rel="apple-touch-icon" href="<?php echo View::asset('assets/images/logo.png'); ?>">
+    <script>
+        window.CHATROX_ADMIN = {
+            baseUrl: '<?php echo BASE_URL; ?>',
+            apiUrl: '<?php echo BASE_URL; ?>/api/admin',
+            csrfToken: '<?php echo \App\Core\Session::csrfToken(); ?>'
+        };
+    </script>
     <script src="<?php echo View::asset('js/themes-shared.js'); ?>"></script>
     <script>if (window.ChatroxTheme) { ChatroxTheme.applySaved(); }</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">

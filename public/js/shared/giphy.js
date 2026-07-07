@@ -5,9 +5,7 @@
     'use strict';
 
     function fetchGifs(query, limit) {
-        var base = (global.CHATROX && global.CHATROX.baseUrl) ? global.CHATROX.baseUrl : '';
-        limit = limit || 20;
-        var url = base + '/api/giphy/gifs?limit=' + encodeURIComponent(String(limit));
+        var url = (global.CHATROX.apiUrl || '') + '/giphy/gifs?limit=' + encodeURIComponent(String(limit));
         if (query) {
             url += '&q=' + encodeURIComponent(String(query));
         }

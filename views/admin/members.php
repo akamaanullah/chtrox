@@ -8,8 +8,12 @@
             <p class="date">Add, remove or manage workspace members and roles.</p>
         </div>
     </div>
-    <div class="header-actions">
-        <button class="btn-primary invite-btn">
+    <div class="header-actions" style="display: flex; gap: 8px;">
+        <button class="btn-primary generate-invite-btn" style="background: var(--indigo-50, rgba(99, 102, 241, 0.08)); color: var(--indigo-600, #4f46e5); border: 1px solid var(--indigo-100, #e2e8f0); display: flex; align-items: center; gap: 8px; font-weight: 600;">
+            <i data-lucide="link"></i>
+            <span>Generate Invite Link</span>
+        </button>
+        <button class="btn-primary invite-btn" style="display: flex; align-items: center; gap: 8px;">
             <i data-lucide="user-plus"></i>
             <span>Add Member</span>
         </button>
@@ -50,20 +54,43 @@
                 </tr>
             </thead>
             <tbody id="membersTableBody">
-                <!-- Row 1 -->
-                <tr class="member-row">
+<?php foreach ($members as $member): ?>
+                <tr class="member-row" data-id="<?php echo \App\Core\View::e($member['id']); ?>" data-username="<?php echo \App\Core\View::e($member['username']); ?>" data-email="<?php echo \App\Core\View::e($member['email']); ?>" data-role="<?php echo \App\Core\View::e($member['role']); ?>">
                     <td>
                         <div class="member-info-cell">
-                            <div class="avatar-mini">MB</div>
+                            <?php if ($member['avatar'] && $member['avatar'] !== DEFAULT_AVATAR_URL): ?>
+                                <img src="<?php echo \App\Core\View::e($member['avatar']); ?>" alt="Avatar" class="avatar-mini" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
+                            <?php else: ?>
+                                <?php
+                                    $initials = '';
+                                    $names = explode(' ', $member['name']);
+                                    foreach ($names as $n) {
+                                        $initials .= strtoupper(substr($n, 0, 1));
+                                    }
+                                    $initials = substr($initials, 0, 2);
+                                    $colors = ['bg-indigo', 'bg-pink', 'bg-orange', 'bg-purple', 'bg-green', 'bg-cyan', 'bg-yellow', 'bg-red', 'bg-blue', 'bg-emerald', 'bg-slate', 'bg-amber', 'bg-rose'];
+                                    $colorClass = $colors[ord(substr($member['name'], 0, 1)) % count($colors)];
+                                ?>
+                                <div class="avatar-mini <?php echo $colorClass; ?>"><?php echo \App\Core\View::e($initials); ?></div>
+                            <?php endif; ?>
                             <div class="member-details">
-                                <span class="member-name">Mahad Bukhari</span>
-                                <span class="member-email">mahad@example.com</span>
+                                <span class="member-name"><?php echo \App\Core\View::e($member['name']); ?></span>
+                                <span class="member-email"><?php echo \App\Core\View::e($member['email']); ?></span>
                             </div>
                         </div>
                     </td>
-                    <td><span class="role-badge admin">Admin</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td>Mar 09, 2026</td>
+                    <td><span class="role-badge <?php echo strtolower($member['role']); ?>"><?php echo \App\Core\View::e($member['role']); ?></span></td>
+                    <td>
+                        <?php 
+                            $statusClass = strtolower($member['status']) === 'active' || strtolower($member['status']) === 'online' ? 'active' : 'offline';
+                            $statusLabel = strtolower($member['status']) === 'active' || strtolower($member['status']) === 'online' ? 'Active' : 'Offline';
+                        ?>
+                        <div class="status-indicator <?php echo $statusClass; ?>">
+                            <span class="dot"></span>
+                            <span><?php echo $statusLabel; ?></span>
+                        </div>
+                    </td>
+                    <td><?php echo \App\Core\View::e($member['join_date']); ?></td>
                     <td class="text-right">
                         <div class="action-btns">
                             <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
@@ -71,300 +98,7 @@
                         </div>
                     </td>
                 </tr>
-                <!-- Row 2 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-indigo">JS</div>
-                            <div class="member-details">
-                                <span class="member-name">John Smith</span>
-                                <span class="member-email">john@chatrox.com</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator offline"><span class="dot"></span><span>Offline</span></div></td>
-                    <td>Feb 28, 2026</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 3 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-pink">SR</div>
-                            <div class="member-details">
-                                <span class="member-name">Sarah Ross</span>
-                                <span class="member-email">sarah.r@work.com</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td>Jan 15, 2026</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 4 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-orange">AL</div>
-                            <div class="member-details">
-                                <span class="member-name">Alex Lee</span>
-                                <span class="member-email">alee@startup.io</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td>Mar 05, 2026</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 5 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-purple">EW</div>
-                            <div class="member-details">
-                                <span class="member-name">Emma Williams</span>
-                                <span class="member-email">emma.w@chatrox.com</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge admin">Admin</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td>Dec 10, 2025</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 6 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-green">OM</div>
-                            <div class="member-details">
-                                <span class="member-name">Oliver Mitchell</span>
-                                <span class="member-email">oliver.m@workspace.net</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td>Feb 15, 2026</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 7 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-cyan">DC</div>
-                            <div class="member-details">
-                                <span class="member-name">David Chen</span>
-                                <span class="member-email">david.c@tech.org</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator offline"><span class="dot"></span><span>Offline</span></div></td>
-                    <td>Jan 20, 2026</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 8 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-yellow">SG</div>
-                            <div class="member-details">
-                                <span class="member-name">Sophia Garcia</span>
-                                <span class="member-email">sophia.g@design.co</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td>Mar 01, 2026</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 9 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-red">MB</div>
-                            <div class="member-details">
-                                <span class="member-name">Michael Brown</span>
-                                <span class="member-email">mike.b@corp.com</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator offline"><span class="dot"></span><span>Offline</span></div></td>
-                    <td>Feb 10, 2026</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 10 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-blue">IW</div>
-                            <div class="member-details">
-                                <span class="member-name">Isabella White</span>
-                                <span class="member-email">isabella.w@chatrox.com</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td>Dec 22, 2025</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 11 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-emerald">AT</div>
-                            <div class="member-details">
-                                <span class="member-name">Alex Turner</span>
-                                <span class="member-email">alex.t@music.io</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td>Mar 06, 2026</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 12 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-slate">CK</div>
-                            <div class="member-details">
-                                <span class="member-name">Chloe King</span>
-                                <span class="member-email">chloe.k@lifestyle.com</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td>Jan 30, 2026</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 13 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-amber">LH</div>
-                            <div class="member-details">
-                                <span class="member-name">Liam Hudson</span>
-                                <span class="member-email">liam.h@travel.net</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator offline"><span class="dot"></span><span>Offline</span></div></td>
-                    <td>Feb 20, 2026</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 14 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-lime">NP</div>
-                            <div class="member-details">
-                                <span class="member-name">Noah Park</span>
-                                <span class="member-email">noah.p@dev.org</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td>Mar 02, 2026</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
-                <!-- Row 15 -->
-                <tr class="member-row">
-                    <td>
-                        <div class="member-info-cell">
-                            <div class="avatar-mini bg-rose">MW</div>
-                            <div class="member-details">
-                                <span class="member-name">Mia Wilson</span>
-                                <span class="member-email">mia.w@chatrox.com</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="role-badge member">Member</span></td>
-                    <td><div class="status-indicator active"><span class="dot"></span><span>Active</span></div></td>
-                    <td>Dec 15, 2025</td>
-                    <td class="text-right">
-                        <div class="action-btns">
-                            <button class="action-btn edit-member-btn" title="Edit Member"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn delete" title="Remove Member"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </td>
-                </tr>
+<?php endforeach; ?>
             </tbody>
         </table>
 
@@ -512,3 +246,56 @@
         </div>
     </div>
 </div>
+
+<!-- Generate Invite Link Modal -->
+<div class="modal" id="generateInviteModal">
+    <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header">
+            <div class="modal-header-title" style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--indigo-50); color: var(--indigo-600); display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="link" size="18"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: var(--text-primary);">Generate Invite Link</h3>
+                    <p style="margin: 0; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Self-Registration Token Link</p>
+                </div>
+            </div>
+            <button class="modal-close" id="closeInviteModalBtn" style="background: none; border: none; cursor: pointer; color: var(--text-secondary);">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+            <form id="generateInviteForm" class="modal-form" style="display: flex; flex-direction: column; gap: 16px;">
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="inviteEmail" style="font-size: 13px; font-weight: 600; color: var(--text-primary);">Email (Optional)</label>
+                    <input type="email" id="inviteEmail" placeholder="Leave blank for generic self-registration link" class="filter-select" style="width: 100%; box-sizing: border-box; padding: 8px 12px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; font-size: 14px;">
+                </div>
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="inviteRole" style="font-size: 13px; font-weight: 600; color: var(--text-primary);">Role</label>
+                    <select id="inviteRole" class="filter-select" style="width: 100%; box-sizing: border-box; padding: 8px 12px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; font-size: 14px;">
+                        <option value="member">Member (Default)</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                
+                <div id="inviteResultArea" style="display: none; flex-direction: column; gap: 8px; margin-top: 10px; padding: 12px; background: var(--indigo-50, rgba(99, 102, 241, 0.04)); border: 1px solid var(--indigo-100, #a5b4fc); border-radius: 8px;">
+                    <label style="font-size: 12px; font-weight: 700; color: var(--indigo-600); text-transform: uppercase; letter-spacing: 0.05em;">Your Invite Link</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="generatedInviteUrl" readonly style="flex: 1; padding: 8px 10px; font-size: 13px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 6px; background: #ffffff; color: var(--text-primary);" onclick="this.select();">
+                        <button type="button" id="btnCopyInviteUrl" class="btn-primary" style="padding: 8px 12px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <i data-lucide="copy" size="14"></i> Copy
+                        </button>
+                    </div>
+                    <span style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">This link expires in 7 days.</span>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer" style="padding: 15px 20px; display: flex; justify-content: flex-end;">
+            <button class="btn-primary" id="btnSubmitGenerateInvite" style="width: 100%; justify-content: center; font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <i data-lucide="sparkles"></i>
+                <span>Generate Invite Link</span>
+            </button>
+        </div>
+    </div>
+</div>
+

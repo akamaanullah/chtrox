@@ -5,12 +5,12 @@
             <span class="status-online-glow"></span>
         </div>
         <h1>Collective Intelligence</h1>
-        <p>Channels are where the entire Chatrox team aligns, discusses projects, and shares breakthroughs.</p>
+        <p>Channels are where the entire ChatRox team aligns, discusses projects, and shares breakthroughs.</p>
     </div>
 
     <div class="channels-grid">
         <?php foreach ($channel_hero_cards as $card): ?>
-            <a href="channels/<?php echo htmlspecialchars($card['id']); ?>" class="channel-card">
+            <a href="<?php echo \App\Core\View::url('channels/' . $card['id']); ?>" class="channel-card">
                 <div class="ch-icon-pill">
                     <i data-lucide="<?php echo htmlspecialchars($card['icon']); ?>" size="18"></i>
                 </div>

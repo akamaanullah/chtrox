@@ -116,7 +116,18 @@
         if (!grid) return;
 
         if (!items || !items.length) {
-            grid.innerHTML = '<div class="ann-card ann-card--empty"><p>No active announcements right now.</p></div>';
+            grid.innerHTML = [
+                '<div class="ann-card ann-card--empty" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; text-align: center; border: 1.5px dashed var(--border-color, #e2e8f0); background: #f8fafc; border-radius: 16px; min-height: 180px; width: 100%; gap: 12px; box-sizing: border-box; grid-column: 1 / -1;">',
+                '    <div style="background: var(--indigo-50, rgba(99, 102, 241, 0.06)); color: var(--indigo-600, #4f46e5); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 4px;">',
+                '        <i data-lucide="megaphone-off" size="24"></i>',
+                '    </div>',
+                '    <p style="margin: 0; color: var(--text-primary, #0f172a); font-size: 15px; font-weight: 600; font-family: inherit;">No Active Announcements</p>',
+                '    <span style="color: var(--text-muted, #64748b); font-size: 13px; font-family: inherit;">Important updates or company events will be displayed here.</span>',
+                '</div>'
+            ].join('\n');
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons();
+            }
             return;
         }
 
@@ -222,7 +233,7 @@
         if (inflight) inflight.abort();
         inflight = new AbortController();
 
-        fetch(base + '/api/home/summary', {
+        fetch((global.CHATROX.apiUrl || '') + '/home/summary', {
             method: 'GET',
             credentials: 'same-origin',
             headers: {

@@ -120,7 +120,7 @@ class AuthController extends Controller
                 );
             }
         }
-        Session::destroy();
+        Session::adminLogout();
         $this->redirect('/admin/login');
     }
 }
