@@ -195,8 +195,22 @@ try {
 
     // Mapping tracking array: (workspace_id, user_id) => workspace_member_id
     $memberMap = [];
+    $usedUsernames = [];
 
     foreach ($users as $user) {
+        $username = strtolower($user['username']);
+        $username = preg_replace('/[^a-z0-9]/', '', $username);
+        if ($username === '') {
+            $username = 'user';
+        }
+        $baseUsername = $username;
+        $suffix = 1;
+        while (in_array($username, $usedUsernames, true)) {
+            $username = $baseUsername . $suffix;
+            $suffix++;
+        }
+        $usedUsernames[] = $username;
+
         $avatarPath = $user['profile_picture'];
         if ($avatarPath === 'includes/image/default-avatar.jpg') {
             $avatarPath = 'assets/images/default-avatar.svg';
@@ -208,7 +222,7 @@ try {
         $stmtUser->execute([
             ':id' => $user['id'],
             ':email' => $user['email'],
-            ':username' => $user['username'],
+            ':username' => $username,
             ':password_hash' => $user['password'],
             ':first_name' => $user['first_name'],
             ':last_name' => $user['last_name'],
