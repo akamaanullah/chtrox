@@ -19,6 +19,9 @@
 
 declare(strict_types=1);
 
+// Increase memory limit for large datasets
+ini_set('memory_limit', '512M');
+
 // Prevent execution via web server
 if (PHP_SAPI !== 'cli') {
     die("This script can only be run via CLI.\n");
@@ -416,114 +419,78 @@ try {
     // -------------------------------------------------------------------------
     // STEP 5: Messages (Chronological Merging)
     // -------------------------------------------------------------------------
-    echo "[STEP 5] Extracting, Sorting, and Migrating Messages...\n";
+    echo "[STEP 5] Extracting, Sorting, and Migrating Messages (Streamed)...\n";
     
-    // Fetch all old channel messages
-    $oldChanMessages = $srcPdo->query("SELECT * FROM channel_messages")->fetchAll();
-    
-    // Fetch all old DM messages
-    $oldDmMessages = $srcPdo->query("SELECT * FROM messages WHERE receiver_id IS NOT NULL AND channel_id IS NULL")->fetchAll();
+    $query = "
+        (SELECT 'channel_messages' AS source_table, id, company_id AS workspace_id, channel_id, NULL AS receiver_id, user_id, message, has_media, has_voice, is_deleted, is_edited, reply_to_id, created_at, updated_at
+         FROM channel_messages)
+        UNION ALL
+        (SELECT 'messages' AS source_table, id, company_id AS workspace_id, NULL AS channel_id, receiver_id, sender_id AS user_id, message, has_media, has_voice, is_deleted, is_edited, reply_to_id, created_at, updated_at
+         FROM messages
+         WHERE receiver_id IS NOT NULL AND channel_id IS NULL)
+        ORDER BY created_at ASC
+    ";
 
-    $messagesList = [];
-
-    // Compile into unified array for chronological sorting
-    foreach ($oldChanMessages as $msg) {
-        $messagesList[] = [
-            'source_table' => 'channel_messages',
-            'id' => (int)$msg['id'],
-            'workspace_id' => (int)$msg['company_id'],
-            'channel_id' => (int)$msg['channel_id'],
-            'user_id' => (int)$msg['user_id'],
-            'message' => $msg['message'] ?? '',
-            'has_media' => (int)$msg['has_media'],
-            'has_voice' => (int)$msg['has_voice'],
-            'is_deleted' => (int)$msg['is_deleted'],
-            'is_edited' => (int)$msg['is_edited'],
-            'reply_to_id' => $msg['reply_to_id'] ? (int)$msg['reply_to_id'] : null,
-            'created_at' => $msg['created_at'],
-            'updated_at' => $msg['updated_at']
-        ];
-    }
-
-    foreach ($oldDmMessages as $msg) {
-        $wsId = $msg['company_id'];
-        $senderMemberId = $memberMap[$wsId][$msg['sender_id']] ?? null;
-        $receiverMemberId = $memberMap[$wsId][$msg['receiver_id']] ?? null;
-        
-        if ($senderMemberId === null || $receiverMemberId === null) {
-            continue;
-        }
-        
-        $memberIds = [$senderMemberId, $receiverMemberId];
-        sort($memberIds);
-        $dmHash = hash('sha256', implode(':', $memberIds));
-
-        $messagesList[] = [
-            'source_table' => 'messages',
-            'id' => (int)$msg['id'],
-            'workspace_id' => (int)$msg['company_id'],
-            'dm_hash' => $dmHash,
-            'user_id' => (int)$msg['sender_id'],
-            'message' => $msg['message'] ?? '',
-            'has_media' => (int)$msg['has_media'],
-            'has_voice' => (int)$msg['has_voice'],
-            'is_deleted' => (int)$msg['is_deleted'],
-            'is_edited' => (int)$msg['is_edited'],
-            'reply_to_id' => $msg['reply_to_id'] ? (int)$msg['reply_to_id'] : null,
-            'created_at' => $msg['created_at'],
-            'updated_at' => $msg['updated_at']
-        ];
-    }
-
-    // Sort chronologically by created_at ascending
-    usort($messagesList, static function (array $a, array $b): int {
-        return strcmp($a['created_at'], $b['created_at']);
-    });
+    $stmtSelectMsg = $srcPdo->prepare($query);
+    $stmtSelectMsg->execute();
 
     $stmtInsertMsg = $tgtPdo->prepare("
         INSERT INTO messages (workspace_id, conversation_id, sender_id, reply_to_id, forwarded_from_message_id, body, message_type, edited_at, deleted_for_everyone_at, created_at)
-        VALUES (:workspace_id, :conversation_id, :sender_id, NULL, NULL, :body, :message_type, :edited_at, :deleted_for_everyone_at, :created_at)
+        VALUES (:workspace_id, :conversation_id, :sender_id, :reply_to_id, NULL, :body, :message_type, :edited_at, :deleted_for_everyone_at, :created_at)
     ");
 
     // Tracks: (source_table, old_id) => new_message_id
     $messageIdMap = [];
     $migratedMsgCount = 0;
+    
+    // We will collect reply_to relationships that need post-processing 
+    // to make sure they are resolved correctly in a second pass.
+    $repliesToResolve = [];
 
     // Transaction for fast bulk inserts
     $tgtPdo->beginTransaction();
 
-    foreach ($messagesList as $msg) {
+    while ($msg = $stmtSelectMsg->fetch()) {
         // Exclude voice messages
-        if ($msg['has_voice'] === 1) {
+        if ((int)$msg['has_voice'] === 1) {
             continue;
         }
 
-        $wsId = $msg['workspace_id'];
-        $senderMemberId = $memberMap[$wsId][$msg['user_id']] ?? null;
+        $wsId = (int)$msg['workspace_id'];
+        $senderMemberId = $memberMap[$wsId][(int)$msg['user_id']] ?? null;
         if ($senderMemberId === null) {
             continue;
         }
 
         $convoId = null;
         if ($msg['source_table'] === 'channel_messages') {
-            $convoId = $channelConvoMap[$msg['channel_id']] ?? null;
+            $convoId = $channelConvoMap[(int)$msg['channel_id']] ?? null;
         } else {
-            $convoId = $dmConvoMap[$msg['dm_hash']] ?? null;
+            // It is a DM. Map using sender and receiver workspace_member_ids
+            $receiverMemberId = $memberMap[$wsId][(int)$msg['receiver_id']] ?? null;
+            if ($receiverMemberId === null) {
+                continue;
+            }
+            $memberIds = [$senderMemberId, $receiverMemberId];
+            sort($memberIds);
+            $dmHash = hash('sha256', implode(':', $memberIds));
+            $convoId = $dmConvoMap[$dmHash] ?? null;
         }
 
         if ($convoId === null) {
             continue;
         }
 
-        $messageType = $msg['has_media'] === 1 ? 'file' : 'text';
-        $editedAt = $msg['is_edited'] === 1 ? $msg['updated_at'] : null;
-        $deletedAt = $msg['is_deleted'] === 1 ? $msg['updated_at'] : null;
+        $messageType = (int)$msg['has_media'] === 1 ? 'file' : 'text';
+        $editedAt = (int)$msg['is_edited'] === 1 ? $msg['updated_at'] : null;
+        $deletedAt = (int)$msg['is_deleted'] === 1 ? $msg['updated_at'] : null;
 
         $stmtInsertMsg->execute([
             ':workspace_id' => $wsId,
             ':conversation_id' => $convoId,
             ':sender_id' => $senderMemberId,
-            ':body' => $msg['message'],
+            ':reply_to_id' => null, // Will update in second pass
+            ':body' => $msg['message'] ?? '',
             ':message_type' => $messageType,
             ':edited_at' => $editedAt,
             ':deleted_for_everyone_at' => $deletedAt,
@@ -531,7 +498,16 @@ try {
         ]);
 
         $newMsgId = (int)$tgtPdo->lastInsertId();
-        $messageIdMap[$msg['source_table']][$msg['id']] = $newMsgId;
+        $messageIdMap[$msg['source_table']][(int)$msg['id']] = $newMsgId;
+        
+        if ($msg['reply_to_id'] !== null) {
+            $repliesToResolve[] = [
+                'new_id' => $newMsgId,
+                'source_table' => $msg['source_table'],
+                'old_reply_to_id' => (int)$msg['reply_to_id']
+            ];
+        }
+
         $migratedMsgCount++;
     }
 
@@ -547,16 +523,11 @@ try {
     $tgtPdo->beginTransaction();
     $repliesUpdated = 0;
 
-    foreach ($messagesList as $msg) {
-        if ($msg['reply_to_id'] === null) {
-            continue;
-        }
+    foreach ($repliesToResolve as $reply) {
+        $newReplyToId = $messageIdMap[$reply['source_table']][$reply['old_reply_to_id']] ?? null;
 
-        $newMsgId = $messageIdMap[$msg['source_table']][$msg['id']] ?? null;
-        $newReplyToId = $messageIdMap[$msg['source_table']][$msg['reply_to_id']] ?? null;
-
-        if ($newMsgId !== null && $newReplyToId !== null) {
-            $stmtUpdateReply->execute([$newReplyToId, $newMsgId]);
+        if ($newReplyToId !== null) {
+            $stmtUpdateReply->execute([$newReplyToId, $reply['new_id']]);
             $repliesUpdated++;
         }
     }
