@@ -810,6 +810,46 @@ try {
     $tgtPdo->commit();
     echo "  - Channel member counts refreshed.\n";
 
+    // -------------------------------------------------------------------------
+    // STEP 11: Populate Conversation Read Cursors (Mark All as Read)
+    // -------------------------------------------------------------------------
+    echo "[STEP 11] Populating Conversation Read Cursors (Marking All Messages as Read)...\n";
+    
+    $latestMessages = $tgtPdo->query("
+        SELECT conversation_id, MAX(id) as last_msg_id, MAX(created_at) as last_msg_at 
+        FROM messages 
+        GROUP BY conversation_id
+    ")->fetchAll();
+
+    $stmtInsertCursor = $tgtPdo->prepare("
+        INSERT INTO conversation_read_cursors (workspace_member_id, conversation_id, last_read_message_id, last_read_at)
+        VALUES (:workspace_member_id, :conversation_id, :last_read_message_id, :last_read_at)
+        ON DUPLICATE KEY UPDATE last_read_message_id = VALUES(last_read_message_id), last_read_at = VALUES(last_read_at)
+    ");
+
+    $tgtPdo->beginTransaction();
+    foreach ($latestMessages as $lm) {
+        $convoId = (int)$lm['conversation_id'];
+        $lastMsgId = (int)$lm['last_msg_id'];
+        $lastMsgAt = $lm['last_msg_at'];
+
+        $stmtParts = $tgtPdo->prepare("SELECT workspace_member_id FROM conversation_participants WHERE conversation_id = ?");
+        $stmtParts->execute([$convoId]);
+        $participants = $stmtParts->fetchAll();
+
+        foreach ($participants as $p) {
+            $mId = (int)$p['workspace_member_id'];
+            $stmtInsertCursor->execute([
+                ':workspace_member_id' => $mId,
+                ':conversation_id' => $convoId,
+                ':last_read_message_id' => $lastMsgId,
+                ':last_read_at' => $lastMsgAt
+            ]);
+        }
+    }
+    $tgtPdo->commit();
+    echo "  - Conversation read cursors populated. All messages marked as read.\n";
+
     // Re-enable target database foreign keys check
     $tgtPdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
 
