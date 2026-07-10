@@ -99,12 +99,15 @@ $router->post('/api/v1/settings/sessions/revoke', 'Front\Api\SettingsController@
 $router->post('/api/v1/settings/presence', 'Front\Api\SettingsController@updatePresence', [AuthMiddleware::class, CsrfMiddleware::class]);
 $router->put('/api/v1/profile/theme', 'Front\Api\ProfileController@updateTheme', [AuthMiddleware::class, CsrfMiddleware::class]);
 $router->post('/api/v1/profile/avatar', 'Front\Api\ProfileController@uploadAvatar', [AuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/api/v1/feedback', 'Front\Api\FeedbackController@submit', [AuthMiddleware::class, CsrfMiddleware::class]);
 
 // Auth routes
 $router->get('/login', 'Front\AuthController@login', [GuestMiddleware::class]);
 $router->post('/login', 'Front\AuthController@login', [GuestMiddleware::class, CsrfMiddleware::class]);
 $router->get('/register', 'Front\AuthController@register', [GuestMiddleware::class]);
 $router->post('/register', 'Front\AuthController@register', [GuestMiddleware::class, CsrfMiddleware::class]);
+$router->get('/forgot-password', 'Front\AuthController@forgotPassword', [GuestMiddleware::class]);
+$router->post('/forgot-password', 'Front\AuthController@forgotPassword', [GuestMiddleware::class, CsrfMiddleware::class]);
 $router->get('/join/{token}', 'Front\InviteController@show', [GuestMiddleware::class]);
 $router->post('/join/{token}', 'Front\InviteController@process', [GuestMiddleware::class, CsrfMiddleware::class]);
 $router->get('/logout', 'Front\AuthController@logout');
@@ -123,8 +126,12 @@ $router->get('/admin/channels', 'Admin\ChannelsController@index', [AdminAuthMidd
 $router->get('/admin/announcements', 'Admin\AnnouncementsController@index', [AdminAuthMiddleware::class]);
 $router->get('/admin/files', 'Admin\FilesController@index', [AdminAuthMiddleware::class]);
 $router->get('/admin/activity', 'Admin\ActivityController@index', [AdminAuthMiddleware::class]);
+$router->get('/admin/feedback', 'Admin\FeedbackController@index', [AdminAuthMiddleware::class]);
+$router->get('/admin/resets', 'Admin\ResetsController@index', [AdminAuthMiddleware::class]);
 
 // Admin API endpoints
+$router->delete('/api/admin/feedback', 'Admin\FeedbackController@delete', [AdminAuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/api/admin/resets/process', 'Admin\ResetsController@process', [AdminAuthMiddleware::class, CsrfMiddleware::class]);
 $router->post('/api/admin/members', 'Admin\MembersController@add', [AdminAuthMiddleware::class, CsrfMiddleware::class]);
 $router->post('/api/admin/members/generate-invite', 'Admin\MembersController@generateInviteLink', [AdminAuthMiddleware::class, CsrfMiddleware::class]);
 $router->patch('/api/admin/members', 'Admin\MembersController@edit', [AdminAuthMiddleware::class, CsrfMiddleware::class]);

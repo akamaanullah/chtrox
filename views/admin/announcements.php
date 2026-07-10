@@ -86,7 +86,9 @@
                     data-tag="<?php echo \App\Core\View::e($ann['tag']); ?>" 
                     data-message="<?php echo \App\Core\View::e($ann['message']); ?>"
                     data-start="<?php echo date('Y-m-d', strtotime($ann['start_date'])); ?>"
-                    data-end="<?php echo date('Y-m-d', strtotime($ann['end_date'])); ?>">
+                    data-end="<?php echo date('Y-m-d', strtotime($ann['end_date'])); ?>"
+                    data-author="<?php echo \App\Core\View::e($ann['admin_name'] ?: 'ChatRox Admin'); ?>"
+                    data-created="<?php echo date('M d, Y', strtotime($ann['created_at'])); ?>">
                     <td>
                         <div class="ann-tag">
                             <span class="ann-emoji"><?php echo $emoji; ?></span>
@@ -97,9 +99,15 @@
                     <td>
                         <div class="member-info-cell">
                             <?php if ($ann['avatar_path']): ?>
-                                <img src="<?php echo \App\Core\View::e($ann['avatar_path']); ?>" alt="" class="avatar-mini" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
+                                <img src="<?php echo \App\Core\View::avatar($ann['avatar_path']); ?>" alt="" class="avatar-mini" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
                             <?php else: ?>
-                                <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;">A</div>
+                                <?php 
+                                    $initial = 'A';
+                                    if (!empty($ann['admin_name'])) {
+                                        $initial = strtoupper(substr(trim($ann['admin_name']), 0, 1));
+                                    }
+                                ?>
+                                <div class="avatar-mini" style="background: var(--indigo-600); color: #fff;"><?php echo $initial; ?></div>
                             <?php endif; ?>
                             <span class="member-name admin-name"><?php echo \App\Core\View::e($ann['admin_name'] ?: 'ChatRox Admin'); ?></span>
                         </div>
@@ -107,7 +115,7 @@
                     <td><span class="text-slate info-text"><?php echo date('M d, Y', strtotime($ann['created_at'])); ?></span></td>
                     <td class="text-right">
                         <div class="action-btns">
-                            <button class="action-btn" title="View"><i data-lucide="eye"></i></button>
+                            <button class="action-btn js-open-view-ann-modal" title="View"><i data-lucide="eye"></i></button>
                             <button class="action-btn js-open-edit-ann-modal" title="Edit"><i data-lucide="edit-2"></i></button>
                             <button class="action-btn delete" title="Remove"><i data-lucide="trash-2"></i></button>
                         </div>
@@ -275,6 +283,56 @@
             <button type="submit" form="editAnnouncementForm" class="btn-primary" id="editAnnSubmitBtn" style="width: 100%; justify-content: center;">
                 <i data-lucide="check"></i>
                 <span>SAVE CHANGES</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- View Announcement Modal -->
+<div class="modal-overlay" id="viewAnnouncementModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-title-area">
+                <div>
+                    <span class="tag-pill" id="viewAnnTagPill">UPDATE</span>
+                    <h3 id="viewAnnTitle" style="margin-top: 8px;">Announcement Details</h3>
+                </div>
+            </div>
+            <button class="modal-close js-close-view-modal">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="padding-top: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px; font-size: 13px; color: #64748b;">
+                <span id="viewAnnEmoji" style="font-size: 20px;">📢</span>
+                <div>
+                    <span style="font-weight: 600;">Posted By:</span> <span id="viewAnnAuthor">Admin</span>
+                    <span style="margin: 0 6px;">•</span>
+                    <span id="viewAnnDate">Jul 08, 2026</span>
+                </div>
+            </div>
+            
+            <div class="form-group full-width">
+                <label>MESSAGE</label>
+                <div id="viewAnnMessage" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; min-height: 80px; white-space: pre-wrap; font-size: 14px; line-height: 1.6; color: #1e293b;"></div>
+            </div>
+
+            <div class="form-grid" style="margin-top: 20px;">
+                <div class="form-group">
+                    <label>START DATE</label>
+                    <div id="viewAnnStartDate" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #334155;"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>END DATE</label>
+                    <div id="viewAnnEndDate" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #334155;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-primary js-close-view-modal" style="width: 100%; justify-content: center; display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="check"></i>
+                <span>CLOSE</span>
             </button>
         </div>
     </div>

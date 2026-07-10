@@ -3,10 +3,10 @@
 
     function updateClocks() {
         var timeZones = {
-            pk: 'Asia/Karachi',
-            hou: 'America/Chicago',
             ny: 'America/New_York',
-            phx: 'America/Phoenix'
+            hou: 'America/Chicago',
+            den: 'America/Denver',
+            la: 'America/Los_Angeles'
         };
 
         if (!window.clockRotations) {
@@ -74,7 +74,7 @@
     }
 
     function initClocks() {
-        if (!document.getElementById('pk-digital')) return;
+        if (!document.getElementById('ny-digital')) return;
 
         if (clockIntervalId) {
             clearInterval(clockIntervalId);

@@ -92,13 +92,26 @@
     }
 
     function fetchWithCsrf(input, init) {
-        return window.originalFetch ? window.originalFetch(input, normalizeFetchInit(input, init)) : fetch(input, normalizeFetchInit(input, init));
+        var p = window.originalFetch ? window.originalFetch(input, normalizeFetchInit(input, init)) : fetch(input, normalizeFetchInit(input, init));
+        return p.then(function (response) {
+            var newToken = response.headers.get('X-CSRF-Token');
+            if (newToken && window.CHATROX) {
+                window.CHATROX.csrfToken = newToken;
+            }
+            return response;
+        });
     }
 
     if (window.fetch && !window.originalFetch) {
         window.originalFetch = window.fetch.bind(window);
         window.fetch = function (input, init) {
-            return window.originalFetch(input, normalizeFetchInit(input, init));
+            return window.originalFetch(input, normalizeFetchInit(input, init)).then(function (response) {
+                var newToken = response.headers.get('X-CSRF-Token');
+                if (newToken && window.CHATROX) {
+                    window.CHATROX.csrfToken = newToken;
+                }
+                return response;
+            });
         };
     }
 

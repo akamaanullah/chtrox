@@ -73,6 +73,15 @@ try {
         }
     });
 
+    // Periodic heartbeat timer (every 30 seconds)
+    $loop->addPeriodicTimer(30, function() use ($chatServer) {
+        try {
+            $chatServer->pingConnections();
+        } catch (\Exception $e) {
+            echo "⚠️ Heartbeat timer error: " . $e->getMessage() . "\n";
+        }
+    });
+
     $server->run();
 } catch (\Exception $e) {
     echo "❌ Server Error: " . $e->getMessage() . "\n";

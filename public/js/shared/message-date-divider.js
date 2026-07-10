@@ -56,6 +56,11 @@
 
     function isTimelineElement(el) {
         if (!el || el.nodeType !== 1) return false;
+        if (el.classList.contains('dm-chat-msg--hidden') || 
+            el.classList.contains('dm-chat-msg--search-nomatch') ||
+            el.style.display === 'none') {
+            return false;
+        }
         return el.classList.contains('dm-chat-msg')
             || el.classList.contains('dm-system-divider')
             || el.getAttribute('data-system-message') === '1';

@@ -50,13 +50,15 @@ class ErrorHandler
     public static function logError(Throwable $exception): void
     {
         $logDir = ROOT_DIR . '/storage/logs';
+        $isWritable = true;
 
         if (!is_dir($logDir)) {
-            mkdir($logDir, 0755, true);
+            if (!@mkdir($logDir, 0775, true)) {
+                $isWritable = false;
+            }
+        } elseif (!is_writable($logDir)) {
+            $isWritable = false;
         }
-
-        // Date-based log rotation to prevent unbounded file growth
-        $logFile = $logDir . '/error-' . date('Y-m-d') . '.log';
 
         $message = sprintf(
             "[%s] %s: %s in %s on line %d\nStack trace:\n%s\n--------------------------------------------------\n",
@@ -68,7 +70,15 @@ class ErrorHandler
             $exception->getTraceAsString()
         );
 
-        error_log($message, 3, $logFile);
+        // Date-based log rotation to prevent unbounded file growth
+        $logFile = $logDir . '/error-' . date('Y-m-d') . '.log';
+
+        if ($isWritable && (!is_file($logFile) || is_writable($logFile))) {
+            @error_log($message, 3, $logFile);
+        } else {
+            // Fallback to system error log to prevent crash due to permission issues
+            @error_log($message, 0);
+        }
     }
 
     private static function renderErrorPage(int $code, string $message): void

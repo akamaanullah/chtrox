@@ -27,11 +27,6 @@ class AuthController extends Controller
 
     public function login(): void
     {
-        if (!Session::verifyCsrf()) {
-            Session::setFlash('error', 'Invalid form submission. Please try again.');
-            $this->redirect('/admin/login');
-        }
-
         $username = trim((string) ($_POST['username'] ?? ''));
         $password = (string) ($_POST['password'] ?? '');
 
@@ -40,11 +35,8 @@ class AuthController extends Controller
             $this->redirect('/admin/login');
         }
 
-        // Find user by username or email
+        // Find user by username only
         $user = User::findByUsername($username);
-        if (!$user) {
-            $user = User::findByEmail($username);
-        }
 
         if (!$user || !password_verify($password, $user['password_hash'])) {
             Session::setFlash('error', 'Invalid username or password.');

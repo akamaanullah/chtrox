@@ -62,7 +62,6 @@ class WorkspaceSearch extends Model
             SELECT username, display_name, avatar_path, job_title, presence_status
             FROM v_people_directory
             WHERE workspace_id = ?
-              AND workspace_member_id != ?
               AND (
                   display_name LIKE ? ESCAPE '\\\\'
                   OR username LIKE ? ESCAPE '\\\\'
@@ -73,20 +72,25 @@ class WorkspaceSearch extends Model
             LIMIT ?
         ");
         $stmt->bindValue(1, $workspaceId, PDO::PARAM_INT);
-        $stmt->bindValue(2, $memberId, PDO::PARAM_INT);
+        $stmt->bindValue(2, $like);
         $stmt->bindValue(3, $like);
         $stmt->bindValue(4, $like);
         $stmt->bindValue(5, $like);
-        $stmt->bindValue(6, $like);
-        $stmt->bindValue(7, $limit, PDO::PARAM_INT);
+        $stmt->bindValue(6, $limit, PDO::PARAM_INT);
         $stmt->execute();
+
+        $user = Session::user();
+        $currentUsername = $user['username'] ?? '';
 
         $items = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $isMe = ($row['username'] === $currentUsername);
+            $title = $isMe ? ($row['display_name'] . ' (You)') : $row['display_name'];
+
             $items[] = [
                 'type' => 'person',
                 'id' => $row['username'],
-                'title' => $row['display_name'],
+                'title' => $title,
                 'subtitle' => '@' . $row['username'],
                 'avatar' => \App\Core\View::avatar($row['avatar_path']),
                 'url' => 'dms/' . $row['username'],

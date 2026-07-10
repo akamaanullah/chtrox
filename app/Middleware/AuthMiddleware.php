@@ -9,9 +9,13 @@ class AuthMiddleware implements MiddlewareInterface
     public function handle(): void
     {
         if (!Session::isLoggedIn()) {
-            Session::setFlash('error', 'Please sign in to access your workspace.');
-            header('Location: ' . BASE_URL . '/login');
-            exit;
+            if (Session::isAdminLoggedIn()) {
+                Session::login(Session::adminUser());
+            } else {
+                Session::setFlash('error', 'Please sign in to access your workspace.');
+                header('Location: ' . BASE_URL . '/login');
+                exit;
+            }
         }
 
         $user = Session::user();

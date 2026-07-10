@@ -58,6 +58,10 @@
                         <div class="ac-avatar-system" style="background: #dbeafe; color: #0284c7;">
                             <i data-lucide="user-plus" size="18"></i>
                         </div>
+                    <?php elseif ($item['type'] === 'announcement'): ?>
+                        <div class="ac-avatar-system" style="background: #fef3c7; color: #d97706;">
+                            <i data-lucide="megaphone" size="18"></i>
+                        </div>
                     <?php else: ?>
                         <div class="ac-avatar-system">
                             <i data-lucide="info" size="18"></i>

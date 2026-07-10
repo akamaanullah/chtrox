@@ -177,6 +177,9 @@ class MessageService
                         VALUES (?, ?, ?)
                     ");
                     $stmtDelivery->execute([$messageId, $recipientId, $state]);
+                } else {
+                    // Self-conversation: recipient is the sender, so message is read instantly
+                    $state = 'read';
                 }
             }
 

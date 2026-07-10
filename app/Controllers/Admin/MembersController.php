@@ -65,8 +65,7 @@ class MembersController extends AdminController
             $db->beginTransaction();
 
             // Create User
-            $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
-            $passwordHash = password_hash($password, $algo);
+            $passwordHash = User::hashPassword($password);
             
             // Format first and last name from username nicely
             $parts = explode('_', $username);
@@ -168,8 +167,7 @@ class MembersController extends AdminController
 
             // Update password if provided
             if ($password !== '') {
-                $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
-                $passwordHash = password_hash($password, $algo);
+                $passwordHash = User::hashPassword($password);
                 $pwStmt = $db->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
                 $pwStmt->execute([$passwordHash, $userId]);
 

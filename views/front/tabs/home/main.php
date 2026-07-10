@@ -2,7 +2,7 @@
     <div class="dash-top">
         <div class="greeting">
             <div class="office-tag"><?php echo htmlspecialchars(strtoupper($home_greeting['workspace_name'] ?? 'Office HQ') . ' DASHBOARD'); ?></div>
-            <h1>Welcome, <span class="text-primary"><?php echo htmlspecialchars($home_greeting['user_name']); ?></span> 👋</h1>
+            <h1>Welcome, <span class="text-primary"><?php echo htmlspecialchars($home_greeting['user_name']); ?></span> <span class="waving-hand">👋</span></h1>
             <p id="homeDateLabel"><?php echo htmlspecialchars($home_greeting['date_label']); ?></p>
         </div>
     </div>
@@ -110,6 +110,9 @@
                         </div>
                         <div class="clock-info">
                             <h4><?php echo htmlspecialchars($clock['label']); ?></h4>
+                            <?php if (!empty($clock['sublabel'])): ?>
+                                <span class="clock-sublabel" style="font-size: 11px; color: var(--text-slate, #64748b); display: block; margin-top: 1px; margin-bottom: 3px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;"><?php echo htmlspecialchars($clock['sublabel']); ?></span>
+                            <?php endif; ?>
                             <span class="digital-time" id="<?php echo htmlspecialchars($clock['id']); ?>-digital">--:-- --</span>
                         </div>
                     </div>

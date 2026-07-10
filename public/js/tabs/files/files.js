@@ -1,6 +1,20 @@
 (function () {
     var sessionAbort = null;
 
+    window.handleFileImageError = function (imgEl) {
+        var parent = imgEl.parentElement;
+        if (!parent) return;
+        var placeholder = document.createElement('div');
+        placeholder.className = 'file-card-icon-placeholder bg-gray js-file-preview-trigger';
+        placeholder.setAttribute('data-index', imgEl.getAttribute('data-index'));
+        placeholder.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">' +
+            '<i data-lucide="image-off" size="36"></i>' +
+            '<span style="font-size: 11px; font-weight: 500; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px;">No image found</span>' +
+            '</div>';
+        parent.replaceChild(placeholder, imgEl);
+        if (window.lucide) window.lucide.createIcons({ nodes: [placeholder] });
+    };
+
     function initFilesTab() {
         if (sessionAbort) {
             sessionAbort.abort();
@@ -69,7 +83,7 @@
 
                 var previewHtml = '';
                 if (isImage) {
-                    previewHtml = '<img src="' + downloadUrl + '" alt="' + escapeHtml(file.name) + '" class="file-card-img js-file-preview-trigger" data-index="' + index + '">';
+                    previewHtml = '<img src="' + downloadUrl + '" alt="' + escapeHtml(file.name) + '" class="file-card-img js-file-preview-trigger" data-index="' + index + '" onerror="window.handleFileImageError && window.handleFileImageError(this)">';
                 } else {
                     previewHtml = '<div class="file-card-icon-placeholder ' + file.icon_class + ' js-file-preview-trigger" data-index="' + index + '"><i data-lucide="' + file.icon + '" size="36"></i></div>';
                 }
@@ -95,7 +109,7 @@
                     '        <span class="file-card-date">' + file.date + '</span>',
                     '    </div>',
                     '    <div class="file-card-user">',
-                    '        <img src="' + file.shared_avatar + '" alt="' + escapeHtml(file.shared_by) + '" class="file-card-avatar">',
+                    '        <img src="' + file.shared_avatar + '" alt="' + escapeHtml(file.shared_by) + '" class="file-card-avatar" onerror="this.onerror=null; this.src=(window.CHATROX ? window.CHATROX.baseUrl : \'\') + \'/assets/images/default-avatar.svg\';">',
                     '        <span class="file-card-username">' + sharedByLabel + '</span>',
                     '    </div>',
                     '</div>'
@@ -122,6 +136,27 @@
             var nextBtn = document.getElementById('filesLightboxNext');
             
             if (!lightbox) return;
+
+            if (lightboxImg) {
+                lightboxImg.addEventListener('error', function () {
+                    if (lightboxImg) lightboxImg.setAttribute('hidden', '');
+                    if (lightboxDoc) {
+                        var file = currentFilesList[activeIndex];
+                        if (lightboxDocName) lightboxDocName.textContent = file ? file.name : 'Image';
+                        if (lightboxDocMeta) lightboxDocMeta.innerHTML = 'Image not found on server';
+                        if (lightboxDocDlBtn) lightboxDocDlBtn.href = lightboxImg.src;
+                        
+                        if (lightboxDocIconBox) {
+                            lightboxDocIconBox.className = 'files-lightbox-doc-icon-box bg-gray';
+                            lightboxDocIconBox.style.color = '#ffffff';
+                            lightboxDocIconBox.innerHTML = '<i data-lucide="image-off" size="48"></i>';
+                        }
+                        
+                        lightboxDoc.removeAttribute('hidden');
+                        if (window.lucide) window.lucide.createIcons({ nodes: [lightboxDocIconBox] });
+                    }
+                }, { signal: signal });
+            }
 
             var activeIndex = -1;
 

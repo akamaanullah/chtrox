@@ -2089,6 +2089,7 @@
                         hidden[i].classList.remove('dm-chat-msg--hidden');
                         hidden[i].removeAttribute('data-initially-hidden');
                     }
+                    reconcileChatDateDividers();
                     if (hidden.length <= loadCount && hasOlderMessages) {
                         fetchOlderMessagesFromApi();
                     } else {
@@ -2836,6 +2837,28 @@
                         }
                     });
                     if (srcs.length) openImageLightbox(srcs, idx);
+                });
+            }
+            /* Load more media items inside details panel */
+            var mediaContentPanel = document.getElementById('dmDetailsContentMedia');
+            var mediaLoadMoreBtn = mediaContentPanel ? mediaContentPanel.querySelector('.js-details-media-load-more') : null;
+            if (mediaLoadMoreBtn) {
+                mediaLoadMoreBtn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    if (!detailsMediaGrid) return;
+                    var hiddenButtons = detailsMediaGrid.querySelectorAll('.dm-details-media-thumb--hidden');
+                    var batchSize = 21;
+                    var shown = 0;
+                    for (var i = 0; i < hiddenButtons.length; i++) {
+                        if (shown >= batchSize) break;
+                        hiddenButtons[i].classList.remove('dm-details-media-thumb--hidden');
+                        shown++;
+                    }
+                    var remaining = detailsMediaGrid.querySelectorAll('.dm-details-media-thumb--hidden');
+                    if (remaining.length === 0) {
+                        var wrapper = mediaContentPanel ? mediaContentPanel.querySelector('#dmDetailsMediaMoreWrap') : null;
+                        if (wrapper) wrapper.style.display = 'none';
+                    }
                 });
             }
             msgLightbox.addEventListener('click', function (e) {
@@ -3953,6 +3976,7 @@
         }
 
         applyPendingMessageFocus();
+        reconcileChatDateDividers();
         dmChatMessages.scrollTop = 0;
         if (window.highlightCodeBlocks) {
             window.highlightCodeBlocks(dmChatMessages);

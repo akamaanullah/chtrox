@@ -12,6 +12,8 @@ class People extends Model
         $user = Session::user();
         $workspaceId = $user['workspace_id'] ?? 0;
 
+        $userId = $user['id'] ?? 0;
+
         if ($workspaceId === 0) {
             return [];
         }
@@ -36,9 +38,12 @@ class People extends Model
                 $timeLabel = date('h:i A');
             }
 
+            $isMe = ((int)$row['user_id'] === (int)$userId);
+            $name = $isMe ? ($row['display_name'] . ' (You)') : $row['display_name'];
+
             $items[] = [
                 'username' => $row['username'],
-                'name' => $row['display_name'],
+                'name' => $name,
                 'role' => strtoupper($row['job_title'] ?: ($row['workspace_role'] ?: 'member')),
                 'email' => $row['email'],
                 'time' => $timeLabel,

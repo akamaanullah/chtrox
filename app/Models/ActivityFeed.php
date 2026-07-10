@@ -63,9 +63,11 @@ class ActivityFeed extends Model
 
         $items = [];
         foreach ($rows as $row) {
-            // Determine type of card for view logic (e.g. 'user', 'missed-call', 'system')
+            // Determine type of card for view logic (e.g. 'user', 'missed-call', 'system', 'announcement')
             $type = 'system';
-            if ($row['notif_type'] === 'mention' || $row['notif_type'] === 'file_share' || $row['notif_type'] === 'reaction') {
+            if ($row['reference_type'] === 'announcement') {
+                $type = 'announcement';
+            } elseif ($row['notif_type'] === 'mention' || $row['notif_type'] === 'file_share' || $row['notif_type'] === 'reaction') {
                 $type = 'user';
             } elseif ($row['notif_type'] === 'missed_call') {
                 $type = 'missed-call';
@@ -97,7 +99,9 @@ class ActivityFeed extends Model
 
             // Determine path for click navigation
             $path = '';
-            if ($row['conv_type'] === 'channel' && $row['channel_slug']) {
+            if ($row['reference_type'] === 'announcement') {
+                $path = 'home';
+            } elseif ($row['conv_type'] === 'channel' && $row['channel_slug']) {
                 $path = 'channels/' . $row['channel_slug'];
             } elseif ($row['reference_type'] === 'channel' && $row['channel_slug']) {
                 // For channel-based notifications (like join requests)

@@ -43,7 +43,9 @@ class Database
                 ]
             );
             self::$connection->exec("SET time_zone = '" . DB_TIMEZONE . "'");
-            self::ensureMigrations(self::$connection);
+            if (PHP_SAPI === 'cli' || (defined('APP_ENV') && APP_ENV !== 'production')) {
+                self::ensureMigrations(self::$connection);
+            }
         } catch (PDOException $e) {
             if (APP_DEBUG) {
                 throw new \RuntimeException('Database connection failed: ' . $e->getMessage() . ' (Host: ' . DB_HOST . ', Port: ' . DB_PORT . ', User: ' . DB_USER . ', Database: ' . DB_NAME . ')', 0, $e);

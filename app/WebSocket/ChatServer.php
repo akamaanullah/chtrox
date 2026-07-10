@@ -67,7 +67,8 @@ class ChatServer implements MessageComponentInterface
                 'workspace_id' => (int)$session['workspace_id'],
                 'role' => $session['role'],
                 'avatar' => $session['avatar_path'],
-                'session_token' => $session['session_token']
+                'session_token' => $session['session_token'],
+                'last_activity' => time()
             ];
 
             $userId = (int)$session['user_id'];
@@ -120,6 +121,12 @@ class ChatServer implements MessageComponentInterface
             $payload = json_decode($msg, true);
             if (!$payload || !isset($payload['action'])) {
                 return;
+            }
+
+            // Update last activity timestamp for keepalive
+            if ($this->clients->contains($from)) {
+                $clientData['last_activity'] = time();
+                $this->clients[$from] = $clientData;
             }
 
             $action = $payload['action'];
@@ -240,6 +247,10 @@ class ChatServer implements MessageComponentInterface
                         $this->updateUserPresence($userId, $status);
                         $this->broadcastPresence($workspaceId, $memberId, $status);
                     }
+                    break;
+
+                case 'pong':
+                    // Keepalive pong received, last_activity updated above
                     break;
             }
         } catch (\Exception $e) {
@@ -566,9 +577,8 @@ class ChatServer implements MessageComponentInterface
             ]
         ]);
 
-        foreach ($this->clients as $conn) {
-            $data = $this->clients[$conn] ?? [];
-            if (isset($data['workspace_member_id']) && (int)$data['workspace_member_id'] === $senderMemberId) {
+        if (isset($this->memberConnections[$senderMemberId])) {
+            foreach ($this->memberConnections[$senderMemberId] as $conn) {
                 $conn->send($payload);
             }
         }
@@ -638,6 +648,37 @@ class ChatServer implements MessageComponentInterface
         }
         if ($pruned > 0) {
             echo "🧹 Pruned {$pruned} expired conversation members cache entries.\n";
+        }
+    }
+
+    /**
+     * Periodically ping all active client connections and disconnect idle ones.
+     */
+    public function pingConnections(): void
+    {
+        $now = time();
+        $deadConns = [];
+
+        foreach ($this->clients as $conn) {
+            $data = $this->clients[$conn] ?? [];
+            $lastActivity = $data['last_activity'] ?? $now;
+
+            // If client has been silent for more than 65 seconds (2 ping cycles), disconnect
+            if ($now - $lastActivity > 65) {
+                $deadConns[] = $conn;
+                continue;
+            }
+
+            // Send application-level ping packet
+            $conn->send(json_encode([
+                'event' => 'ping',
+                'data' => []
+            ]));
+        }
+
+        foreach ($deadConns as $conn) {
+            echo "🔌 Closing inactive connection for resource #{$conn->resourceId} (no heartbeat).\n";
+            $conn->close();
         }
     }
 }

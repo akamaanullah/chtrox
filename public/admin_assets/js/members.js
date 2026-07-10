@@ -316,6 +316,13 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('inviteResultArea').style.display = 'none';
             inviteModal.classList.add('active');
         });
+        
+        // Close modal when clicking on backdrop overlay
+        inviteModal.addEventListener('click', (e) => {
+            if (e.target === inviteModal) {
+                utils.closeModal(inviteModal);
+            }
+        });
     }
 
     if (closeInviteBtn && inviteModal) {

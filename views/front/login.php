@@ -49,7 +49,7 @@
 
                 <div class="auth-group">
                     <label class="auth-label">Password</label>
-                    <a href="#" class="auth-forgot">Forgot password?</a>
+                    <a href="forgot-password" class="auth-forgot">Forgot password?</a>
                     <div class="auth-input-wrapper auth-input-wrapper--toggle">
                         <i data-lucide="lock" class="auth-input-icon"></i>
                         <input type="password" name="password" class="auth-input" placeholder="••••••••" required>

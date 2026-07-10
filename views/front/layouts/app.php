@@ -2,6 +2,10 @@
 
 use App\Core\View;
 
+$pageData = $pageData ?? [];
+$active_tab = $active_tab ?? '';
+$sidebar_tabs = $sidebar_tabs ?? [];
+
 $sharedData = array_merge($pageData, [
     'active_tab' => $active_tab,
     'sidebar_tabs' => $sidebar_tabs,

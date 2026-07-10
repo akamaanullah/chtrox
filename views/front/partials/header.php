@@ -9,6 +9,8 @@
     <title>ChatRox - <?php echo ucfirst($active_tab); ?></title>
     <link rel="icon" type="image/png" href="<?php echo \App\Core\View::asset('assets/images/logo.png'); ?>">
     <link rel="apple-touch-icon" href="<?php echo \App\Core\View::asset('assets/images/logo.png'); ?>">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" id="metaThemeColor" content="#4f46e5">
     <base href="<?php echo BASE_URL; ?>/">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

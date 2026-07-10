@@ -20,12 +20,7 @@ class DmsController extends FrontController
             'forward_targets' => ForwardTarget::list(),
         ];
 
-        file_put_contents(ROOT_DIR . '/dms_sidebar.log', sprintf(
-            "[%s] index called: with='%s', items=%s\n",
-            date('Y-m-d H:i:s'),
-            $withId,
-            json_encode(array_column($viewData['dm_sidebar_items'], 'id'))
-        ), FILE_APPEND);
+
 
         if ($withId !== '') {
             $resolved = DmsConversation::resolveUser($withId);

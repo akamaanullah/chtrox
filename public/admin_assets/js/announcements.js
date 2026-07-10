@@ -255,8 +255,41 @@ document.addEventListener('DOMContentLoaded', function () {
             
             adminAjax('/api/admin/announcements', 'POST', data)
                 .then(res => {
-                    utils.closeModal(addAnnModal);
-                    window.location.reload();
+                    if (res.ticket && res.recipient_ids && res.recipient_ids.length > 0) {
+                        const wsPort = window.CHATROX_ADMIN.wsPort || 8080;
+                        const hostname = window.location.hostname || '127.0.0.1';
+                        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                        const wsUrl = `${protocol}//${hostname}:${wsPort}?token=${res.ticket}&workspace_id=${res.workspace_id}`;
+                        
+                        const ws = new WebSocket(wsUrl);
+                        ws.onopen = function () {
+                            const payload = {
+                                action: 'notify_members',
+                                member_ids: res.recipient_ids,
+                                event: 'new_notification',
+                                data: {
+                                    type: 'announcement',
+                                    title: 'New Announcement',
+                                    body: res.announcement_title,
+                                    reference_type: 'announcement',
+                                    reference_id: res.announcement_id
+                                }
+                            };
+                            ws.send(JSON.stringify(payload));
+                            setTimeout(() => {
+                                ws.close();
+                                utils.closeModal(addAnnModal);
+                                window.location.reload();
+                            }, 500);
+                        };
+                        ws.onerror = function () {
+                            utils.closeModal(addAnnModal);
+                            window.location.reload();
+                        };
+                    } else {
+                        utils.closeModal(addAnnModal);
+                        window.location.reload();
+                    }
                 })
                 .catch(err => {
                     alert(err.message);
@@ -266,6 +299,55 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         });
     }
+
+    // View Modal Elements
+    const viewAnnModal = document.getElementById('viewAnnouncementModal');
+    if (viewAnnModal) {
+        viewAnnModal.querySelectorAll('.js-close-view-modal, .modal-close').forEach(btn => {
+            btn.addEventListener('click', () => utils.closeModal(viewAnnModal));
+        });
+    }
+
+    // Delegate View Button Click
+    annTable.addEventListener('click', (e) => {
+        const viewBtn = e.target.closest('.js-open-view-ann-modal');
+        if (viewBtn) {
+            const row = viewBtn.closest('.ann-row');
+            if (!row) return;
+
+            const data = {
+                title: row.dataset.title,
+                tag: row.dataset.tag,
+                message: row.dataset.message,
+                start: row.dataset.start,
+                end: row.dataset.end,
+                author: row.dataset.author,
+                created: row.dataset.created
+            };
+
+            const formatDate = (str) => {
+                if (!str) return '';
+                const parts = str.split('-');
+                if (parts.length === 3) {
+                    return `${parts[1]}/${parts[2]}/${parts[0]}`;
+                }
+                return str;
+            };
+
+            document.getElementById('viewAnnTagPill').textContent = data.tag || 'UPDATE';
+            document.getElementById('viewAnnTagPill').className = `tag-pill tag-${(data.tag || 'UPDATE').toLowerCase()}`;
+            document.getElementById('viewAnnTitle').textContent = data.title || 'Announcement Details';
+            document.getElementById('viewAnnEmoji').textContent = emojiMap[data.tag] || '📢';
+            document.getElementById('viewAnnAuthor').textContent = data.author || 'ChatRox Admin';
+            document.getElementById('viewAnnDate').textContent = data.created || '';
+            document.getElementById('viewAnnMessage').textContent = data.message || '';
+            document.getElementById('viewAnnStartDate').textContent = formatDate(data.start);
+            document.getElementById('viewAnnEndDate').textContent = formatDate(data.end);
+
+            viewAnnModal.classList.add('active');
+            if (window.lucide) window.lucide.createIcons();
+        }
+    });
 
     // Delegate Delete Button Click
     annTable.addEventListener('click', (e) => {

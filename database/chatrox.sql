@@ -374,7 +374,7 @@ CREATE TABLE messages (
     reply_to_id                 BIGINT UNSIGNED NULL,
     forwarded_from_message_id   BIGINT UNSIGNED NULL,
     body                        TEXT            NOT NULL,
-    message_type                ENUM('text','file','gif','system','voice') NOT NULL DEFAULT 'text',
+    message_type                ENUM('text','file','gif','system','voice','image','audio','video','document') NOT NULL DEFAULT 'text',
     edited_at                   TIMESTAMP(3)    NULL DEFAULT NULL,
     deleted_for_everyone_at     TIMESTAMP(3)    NULL DEFAULT NULL,
     created_at                  TIMESTAMP(3)    NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

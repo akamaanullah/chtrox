@@ -3,6 +3,7 @@
 namespace App\Controllers\Admin;
 
 use App\Models\AdminOverview;
+use App\Models\User;
 use App\Core\Session;
 use App\Core\Database;
 use App\Models\AuditLog;
@@ -145,8 +146,7 @@ class ProfileController extends AdminController
             if (strlen($newPassword) < 6) {
                 $this->jsonResponse(['error' => 'Password must be at least 6 characters.'], 400);
             }
-            $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
-            $passwordHash = password_hash($newPassword, $algo);
+            $passwordHash = User::hashPassword($newPassword);
         }
 
         $db->beginTransaction();
@@ -253,7 +253,7 @@ class ProfileController extends AdminController
                 $workspaceId,
                 $memberId,
                 $firstName . ' ' . $lastName,
-                'profile_update',
+                'settings_update',
                 'Updated profile details'
             );
 

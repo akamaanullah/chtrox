@@ -6,6 +6,7 @@ use App\Core\Controller;
 use App\Core\Session;
 use App\Core\Model;
 use App\Models\AuditLog;
+use App\Models\User;
 use PDO;
 
 class SettingsController extends Controller
@@ -178,8 +179,7 @@ class SettingsController extends Controller
         }
 
         // 2. Hash new password and update
-        $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
-        $newHash = password_hash($newPassword, $algo);
+        $newHash = User::hashPassword($newPassword);
 
         $db->beginTransaction();
         try {

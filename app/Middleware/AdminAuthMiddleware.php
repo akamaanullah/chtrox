@@ -9,9 +9,14 @@ class AdminAuthMiddleware implements MiddlewareInterface
     public function handle(): void
     {
         if (!Session::isAdminLoggedIn()) {
-            Session::setFlash('error', 'Please sign in to access the admin panel.');
-            header('Location: ' . BASE_URL . '/admin/login');
-            exit;
+            $user = Session::user();
+            if ($user && in_array(strtolower($user['role'] ?? ''), ['admin', 'owner'])) {
+                Session::adminLogin($user);
+            } else {
+                Session::setFlash('error', 'Please sign in to access the admin panel.');
+                header('Location: ' . BASE_URL . '/admin/login');
+                exit;
+            }
         }
 
         $admin = Session::adminUser();

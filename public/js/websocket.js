@@ -157,6 +157,11 @@
                     return;
                 }
 
+                if (payload.event === 'ping') {
+                    send('pong');
+                    return;
+                }
+
                 if (payload.event) {
                     // Merge root conversation_id so handlers work even if data omits it
                     const eventDetail = Object.assign(
@@ -1331,6 +1336,83 @@
                     window.ChatRoxRouter.navigate('activity');
                 } else {
                     window.location.href = window.CHATROX.baseUrl + '/activity';
+                }
+                notification.close();
+            };
+        }
+    });
+
+    document.addEventListener('chatrox:new_notification', function (e) {
+        const data = e.detail;
+        if (!data || !window.CHATROX || !window.CHATROX.user) return;
+
+        // Increment Activity tab badge count
+        updateNavBadge('activity', 1);
+
+        // Play sound tone if presence status is NOT 'dnd'
+        const currentPresence = (window.CHATROX.user.presence_status || 'online').toLowerCase();
+        if (currentPresence !== 'dnd') {
+            const tone = (window.CHATROX.user.preferences && window.CHATROX.user.preferences.notification_settings)
+                ? window.CHATROX.user.preferences.notification_settings.tone
+                : 'default';
+            if (tone && tone !== 'none') {
+                window.ChatRoxAudio.play(tone);
+            }
+        }
+
+        // Show in-app toast notification
+        if (window.ChatRoxToast) {
+            if (data.type === 'announcement') {
+                window.ChatRoxToast.info(data.body, data.title || 'New Announcement');
+            } else {
+                window.ChatRoxToast.info(data.body, data.title || 'New Notification');
+            }
+        }
+
+        // Auto-refresh Activity feed if user is currently looking at it
+        if (window.ChatRoxRouter && typeof window.ChatRoxRouter.currentPath === 'function' && window.ChatRoxRouter.currentPath() === 'activity') {
+            window.ChatRoxRouter.navigate('activity', { force: true, replace: true });
+        }
+
+        // Show browser desktop notification if not actively looking at the target page
+        let isCurrentlyViewingTarget = false;
+        if (data.type === 'announcement') {
+            if (window.ChatRoxRouter && typeof window.ChatRoxRouter.currentPath === 'function') {
+                isCurrentlyViewingTarget = (window.ChatRoxRouter.currentPath() === 'home');
+            } else {
+                isCurrentlyViewingTarget = window.location.pathname.indexOf('/home') !== -1;
+            }
+        } else {
+            if (window.ChatRoxRouter && typeof window.ChatRoxRouter.currentPath === 'function') {
+                isCurrentlyViewingTarget = (window.ChatRoxRouter.currentPath() === 'activity');
+            } else {
+                isCurrentlyViewingTarget = window.location.pathname.indexOf('/activity') !== -1;
+            }
+        }
+
+        const isCurrentlyViewingAndActive = isCurrentlyViewingTarget && !document.hidden;
+
+        if (!isCurrentlyViewingAndActive && Notification.permission === 'granted') {
+            const baseUrl = (window.CHATROX && window.CHATROX.baseUrl) ? String(window.CHATROX.baseUrl).replace(/\/+$/, '') : '';
+            const title = data.title || 'New Notification';
+            const body = data.body || '';
+            const path = data.type === 'announcement' ? 'home' : 'activity';
+
+            const notification = new Notification(title, {
+                body: body,
+                icon: baseUrl + '/assets/images/logo.png',
+                badge: baseUrl + '/assets/images/logo.png',
+                tag: (data.reference_type || 'system') + '-' + (data.reference_id || 'new'),
+                silent: true
+            });
+
+            notification.onclick = function (event) {
+                event.preventDefault();
+                window.focus();
+                if (window.ChatRoxRouter && typeof window.ChatRoxRouter.navigate === 'function') {
+                    window.ChatRoxRouter.navigate(path);
+                } else {
+                    window.location.href = window.CHATROX.baseUrl + '/' + path;
                 }
                 notification.close();
             };

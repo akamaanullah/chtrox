@@ -75,7 +75,7 @@ class FileController extends Controller
         }
  
         $page = max(1, (int)($_GET['page'] ?? 1));
-        $perPage = max(5, min(100, (int)($_GET['per_page'] ?? 10)));
+        $perPage = max(5, min(100, (int)($_GET['per_page'] ?? 18)));
         $offset = ($page - 1) * $perPage;
  
         $search = trim((string)($_GET['search'] ?? ''));
@@ -83,34 +83,76 @@ class FileController extends Controller
  
         $db = \App\Core\Model::db();
  
-        // Base where conditions
-        $where = ["workspace_id = :workspace_id"];
+        // Base where conditions - scope to conversations the user participates in
         $params = ['workspace_id' => $workspaceId];
- 
+
+        if ($filter === 'shared_by_me') {
+            // Only files uploaded by this user in this workspace
+            $scopeCondition = "workspace_id = :workspace_id AND uploaded_by = :member_id";
+            $params['member_id'] = $memberId;
+        } elseif ($filter === 'shared_by_others') {
+            // Files from conversations the user is in, uploaded by others
+            $scopeCondition = "workspace_id = :workspace_id AND uploaded_by != :member_id AND id IN (
+                SELECT ma.file_id FROM message_attachments ma
+                JOIN messages msg ON msg.id = ma.message_id
+                JOIN conversations c ON c.id = msg.conversation_id
+                WHERE c.workspace_id = :workspace_id AND msg.deleted_for_everyone_at IS NULL
+                AND (
+                    -- Channels the user is a member of
+                    (c.type = 'channel' AND c.channel_id IN (
+                        SELECT channel_id FROM channel_members WHERE workspace_member_id = :member_id AND left_at IS NULL
+                    ))
+                    OR
+                    -- DMs the user participates in
+                    (c.type = 'dm' AND c.id IN (
+                        SELECT conversation_id FROM conversation_participants WHERE workspace_member_id = :member_id AND left_at IS NULL
+                    ))
+                )
+            )";
+            $params['member_id'] = $memberId;
+        } else {
+            // Default 'all': only show files from conversations the user is part of
+            $scopeCondition = "workspace_id = :workspace_id AND id IN (
+                SELECT ma.file_id FROM message_attachments ma
+                JOIN messages msg ON msg.id = ma.message_id
+                JOIN conversations c ON c.id = msg.conversation_id
+                WHERE c.workspace_id = :workspace_id AND msg.deleted_for_everyone_at IS NULL
+                AND (
+                    -- Channels the user is a member of
+                    (c.type = 'channel' AND c.channel_id IN (
+                        SELECT channel_id FROM channel_members WHERE workspace_member_id = :member_id AND left_at IS NULL
+                    ))
+                    OR
+                    -- DMs the user participates in
+                    (c.type = 'dm' AND c.id IN (
+                        SELECT conversation_id FROM conversation_participants WHERE workspace_member_id = :member_id AND left_at IS NULL
+                    ))
+                    OR
+                    -- Files uploaded by the user
+                    uploaded_by = :member_id
+                )
+            )";
+            $params['member_id'] = $memberId;
+        }
+
+        $where = [$scopeCondition];
+
         if ($search !== '') {
             $where[] = "(original_name LIKE :search OR shared_by LIKE :search)";
             $params['search'] = '%' . $search . '%';
         }
- 
-        if ($filter === 'shared_by_me') {
-            $where[] = "uploaded_by = :member_id";
-            $params['member_id'] = $memberId;
-        } elseif ($filter === 'shared_by_others') {
-            $where[] = "uploaded_by != :member_id";
-            $params['member_id'] = $memberId;
-        }
- 
+
         $whereClause = implode(" AND ", $where);
- 
+
         // Count query
         $countStmt = $db->prepare("SELECT COUNT(*) FROM v_workspace_files WHERE {$whereClause}");
         $countStmt->execute($params);
         $totalRows = (int)$countStmt->fetchColumn();
- 
+
         // Data query with bindValue to handle LIMIT/OFFSET correctly
         $dataStmt = $db->prepare("
-            SELECT * 
-            FROM v_workspace_files 
+            SELECT *
+            FROM v_workspace_files
             WHERE {$whereClause}
             ORDER BY created_at DESC
             LIMIT :limit OFFSET :offset

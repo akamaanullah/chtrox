@@ -96,6 +96,22 @@
                 return;
             }
 
+            var senderEl = e.target.closest('.dm-msg-sender');
+            if (senderEl) {
+                var username = senderEl.getAttribute('data-username');
+                var currentUsername = window.CHATROX && window.CHATROX.user ? window.CHATROX.user.username : null;
+                if (username && username !== currentUsername) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.ChatRoxRouter && typeof window.ChatRoxRouter.navigate === 'function') {
+                        window.ChatRoxRouter.navigate('dms/' + username);
+                    } else {
+                        window.location.href = window.CHATROX.baseUrl + '/dms/' + username;
+                    }
+                }
+                return;
+            }
+
             var chip = e.target.closest('.dm-mention-chip');
             if (chip) {
                 var memberId = chip.getAttribute('data-member-id');
@@ -342,10 +358,10 @@
             }
         }
 
-        function renderMessage(id, content, classes, time, side, senderName, createdAt) {
+        function renderMessage(id, content, classes, time, side, senderName, createdAt, senderUsername) {
             side = side || 'me';
             var sideClass = side === 'me' ? 'dm-chat-msg--me' : 'dm-chat-msg--them';
-            var senderHtml = (side === 'them' && senderName) ? '<span class="dm-msg-sender">' + escapeHtml(senderName) + '</span>' : '';
+            var senderHtml = (side === 'them' && senderName) ? '<span class="dm-msg-sender" data-username="' + escapeHtml(senderUsername || '') + '" style="cursor: pointer;">' + escapeHtml(senderName) + '</span>' : '';
             var createdAttr = createdAt ? ' data-created-at="' + escapeHtml(createdAt) + '"' : '';
             var actionsBar = '<div class="dm-msg-actions" aria-label="Message actions">' +
                 '<button type="button" class="dm-msg-action js-msg-react" title="Reaction" aria-label="Reaction"><i data-lucide="smile-plus" size="16"></i></button>' +
@@ -1971,6 +1987,28 @@
                     if (srcs.length) openImageLightbox(srcs, idx);
                 });
             }
+            /* Load more media items inside details panel */
+            var mediaContentPanel = document.getElementById('dmDetailsContentMedia');
+            var mediaLoadMoreBtn = mediaContentPanel ? mediaContentPanel.querySelector('.js-details-media-load-more') : null;
+            if (mediaLoadMoreBtn) {
+                mediaLoadMoreBtn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    if (!detailsMediaGrid) return;
+                    var hiddenButtons = detailsMediaGrid.querySelectorAll('.dm-details-media-thumb--hidden');
+                    var batchSize = 21;
+                    var shown = 0;
+                    for (var i = 0; i < hiddenButtons.length; i++) {
+                        if (shown >= batchSize) break;
+                        hiddenButtons[i].classList.remove('dm-details-media-thumb--hidden');
+                        shown++;
+                    }
+                    var remaining = detailsMediaGrid.querySelectorAll('.dm-details-media-thumb--hidden');
+                    if (remaining.length === 0) {
+                        var wrapper = mediaContentPanel ? mediaContentPanel.querySelector('#dmDetailsMediaMoreWrap') : null;
+                        if (wrapper) wrapper.style.display = 'none';
+                    }
+                });
+            }
             msgLightbox.addEventListener('click', function (e) {
                 if (e.target === msgLightbox || e.target.closest('.js-msg-lightbox-close')) {
                     closeImageLightbox();
@@ -2439,7 +2477,7 @@
             if (msg.is_pinned) attrs += ' data-pinned="1"';
 
             var senderHtml = (side === 'them' && (msg.sender_name || msg.sender))
-                ? '<span class="dm-msg-sender">' + escapeHtml(msg.sender_name || msg.sender) + '</span>'
+                ? '<span class="dm-msg-sender" data-username="' + escapeHtml(msg.sender_username || '') + '" style="cursor: pointer;">' + escapeHtml(msg.sender_name || msg.sender) + '</span>'
                 : '';
 
             var bubbleInner = msg.deleted_for_everyone
@@ -3125,6 +3163,7 @@
                         hidden[i].classList.remove('dm-chat-msg--hidden');
                         hidden[i].removeAttribute('data-initially-hidden');
                     }
+                    reconcileChatDateDividers();
                     if (hidden.length <= loadCount && hasOlderMessages) {
                         fetchOlderMessagesFromApi();
                     } else {
@@ -3671,7 +3710,7 @@
                 renderMessage('dm-msg-' + msg.id, bubbleContent, bubbleClasses, msg.time_label, 'me', null, msg.created_at);
                 dmChatMessages.scrollTop = 0;
             } else {
-                renderMessage('dm-msg-' + msg.id, bubbleContent, bubbleClasses, msg.time_label, 'them', msg.sender_name, msg.created_at);
+                renderMessage('dm-msg-' + msg.id, bubbleContent, bubbleClasses, msg.time_label, 'them', msg.sender_name, msg.created_at, msg.sender_username);
                 if (isNearBottom) {
                     dmChatMessages.scrollTop = 0;
                     markAsRead();
@@ -4790,6 +4829,7 @@
         }
 
         applyPendingMessageFocus();
+        reconcileChatDateDividers();
         dmChatMessages.scrollTop = 0;
         if (window.highlightCodeBlocks) {
             window.highlightCodeBlocks(dmChatMessages);

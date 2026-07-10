@@ -26,7 +26,7 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
         <a href="channels" class="dm-chat-back" title="Back to Channels">
             <i data-lucide="arrow-left" size="20"></i>
         </a>
-        <div class="dm-chat-header-user">
+        <div class="dm-chat-header-user js-chat-details-open" style="cursor: pointer;">
             <div class="dm-chat-header-avatar">
                 <i data-lucide="hash" size="20"></i>
             </div>
@@ -67,7 +67,7 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
                     'text' => $m['system_text'] ?? $m['text'] ?? '',
                     'created_at' => $m['created_at'] ?? '',
                 ]); ?>
-                <?php MessageDateDivider::maybeRenderAfter($messages, $i); ?>
+                <?php MessageDateDivider::maybeRenderAfter($messages, $i, $initial_visible ?? 999999); ?>
             <?php else: ?>
             <div class="dm-chat-msg dm-chat-msg--<?php echo $m['side']; ?> <?php echo $i >= $initial_visible ? 'dm-chat-msg--hidden' : ''; ?><?php echo !empty($m['deleted_for_everyone']) ? ' dm-chat-msg--deleted-everyone' : ''; ?><?php echo !empty($m['is_pinned']) ? ' dm-chat-msg--pinned' : ''; ?>"
                 id="dm-msg-<?php echo $m['id']; ?>" data-msg-index="<?php echo $m['id']; ?>" data-created-at="<?php echo htmlspecialchars($m['created_at'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" <?php echo $i >= $initial_visible ? ' data-initially-hidden="1"' : ''; ?><?php echo !empty($m['deleted_for_everyone']) ? ' data-deleted-everyone="1"' : ''; ?><?php echo !empty($m['is_pinned']) ? ' data-pinned="1"' : ''; ?>>
@@ -210,7 +210,7 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
                         aria-label="Delete"><i data-lucide="trash-2" size="16"></i></button>
                 </div>
             </div>
-            <?php MessageDateDivider::maybeRenderAfter($messages, $i); ?>
+            <?php MessageDateDivider::maybeRenderAfter($messages, $i, $initial_visible ?? 999999); ?>
             <?php endif; ?>
         <?php endforeach; ?>
         <?php if (count($messages) > $initial_visible || $has_older_messages): ?>
@@ -491,7 +491,7 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
                             </div>
                             <div class="cms-list">
                                 <?php foreach ($channel_members as $member): ?>
-                                <div class="cms-item">
+                                <a href="<?php echo \App\Core\View::url('dms/' . $member['username']); ?>" class="cms-item" style="text-decoration: none; color: inherit; display: flex; align-items: center; justify-content: space-between; width: 100%;">
                                     <div class="cms-item-left">
                                         <img src="<?php echo htmlspecialchars($member['avatar']); ?>"
                                             alt="<?php echo htmlspecialchars($member['name']); ?>" class="cms-avatar">
@@ -505,7 +505,7 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
                                             <span class="cms-role"><?php echo ($member['channel_role'] ?? 'member') === 'owner' ? 'Admin' : ucfirst(htmlspecialchars($member['channel_role'] ?? 'member')); ?></span>
                                         </div>
                                     </div>
-                                </div>
+                                </a>
                                 <?php endforeach; ?>
                             </div>
                         </div>
@@ -514,8 +514,10 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentMedia" role="tabpanel"
                     hidden>
                     <div class="dm-details-media-grid" id="dmDetailsMediaGrid">
+                        <?php $mediaCount = 0; ?>
                         <?php foreach ($conversation_media as $item): ?>
-                            <button type="button" class="dm-details-media-thumb-btn js-details-media-jump"
+                            <?php $mediaCount++; ?>
+                            <button type="button" class="dm-details-media-thumb-btn js-details-media-jump<?php echo $mediaCount > 21 ? ' dm-details-media-thumb--hidden' : ''; ?>"
                                 data-message-id="<?php echo (int)$item['message_id']; ?>"
                                 aria-label="<?php echo htmlspecialchars($item['label']); ?>">
                                 <img src="<?php echo htmlspecialchars($item['url']); ?>" alt="<?php echo htmlspecialchars($item['label']); ?>"
@@ -523,6 +525,11 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
                             </button>
                         <?php endforeach; ?>
                     </div>
+                    <?php if (count($conversation_media) > 21): ?>
+                        <div class="dm-details-media-more-wrap" id="dmDetailsMediaMoreWrap" style="text-align: center; margin-top: 16px; padding-bottom: 16px;">
+                            <button type="button" class="profile-panel-btn profile-panel-btn--secondary js-details-media-load-more" style="width: 100%; margin: 0; padding: 10px; font-size: 13px;">Load More</button>
+                        </div>
+                    <?php endif; ?>
                     <div class="dm-details-empty<?php echo empty($conversation_media) ? ' dm-details-empty--show' : ''; ?>" id="dmDetailsMediaEmpty"<?php echo !empty($conversation_media) ? ' hidden' : ''; ?>>No media shared yet</div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentFiles" role="tabpanel"

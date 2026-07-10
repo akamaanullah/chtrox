@@ -34,6 +34,7 @@ if ($currentUser) {
 }
 
 View::render('partials/modals/create-channel-modal.php');
+View::render('partials/modals/feedback-modal.php');
 View::render('partials/panels/profile-panel.php', [
     'currentUser' => $currentUser,
     'joinedChannels' => $joinedChannels
@@ -191,6 +192,100 @@ if ($footerUserId > 0) {
             });
         }
     };
+</script>
+<script>
+    (function () {
+        // Global listener for image loading errors (capturing phase to catch non-bubbling 'error' events on IMG tags)
+        window.addEventListener('error', function (e) {
+            if (!e.target || e.target.tagName !== 'IMG') return;
+            var img = e.target;
+
+            // 1. Avatars (files list avatar, details avatar, sidebar avatar, profile avatar)
+            if (img.classList.contains('file-card-avatar') || 
+                img.classList.contains('dm-chat-header-avatar') || 
+                img.classList.contains('dm-details-avatar') || 
+                img.classList.contains('profile-panel-avatar') ||
+                img.classList.contains('avatar') ||
+                img.src.indexOf('avatar') !== -1) {
+                img.onerror = null;
+                img.src = (window.CHATROX ? window.CHATROX.baseUrl : '') + '/assets/images/default-avatar.svg';
+                return;
+            }
+
+            // 2. File Card Previews (Files tab)
+            if (img.classList.contains('file-card-img')) {
+                var parent = img.parentElement;
+                if (!parent) return;
+                var placeholder = document.createElement('div');
+                placeholder.className = 'file-card-icon-placeholder bg-gray js-file-preview-trigger';
+                placeholder.setAttribute('data-index', img.getAttribute('data-index') || '');
+                placeholder.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">' +
+                    '<i data-lucide="image-off" size="36"></i>' +
+                    '<span style="font-size: 11px; font-weight: 500; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px;">No image found</span>' +
+                    '</div>';
+                parent.replaceChild(placeholder, img);
+                if (window.lucide) window.lucide.createIcons({ nodes: [placeholder] });
+                return;
+            }
+
+            // 3. Sidebar Details Media Grid thumbnails
+            if (img.classList.contains('dm-details-media-thumb')) {
+                var parent = img.parentElement;
+                if (!parent) return;
+                var placeholder = document.createElement('div');
+                placeholder.className = 'dm-details-media-thumb';
+                placeholder.setAttribute('alt', img.getAttribute('alt') || '');
+                placeholder.setAttribute('data-index', img.getAttribute('data-index') || '');
+                placeholder.style.display = 'flex';
+                placeholder.style.flexDirection = 'column';
+                placeholder.style.alignItems = 'center';
+                placeholder.style.justifyContent = 'center';
+                placeholder.style.background = '#f1f5f9';
+                placeholder.style.border = '1px dashed #cbd5e1';
+                placeholder.style.color = '#94a3b8';
+                placeholder.innerHTML = '<i data-lucide="image-off" size="20"></i>';
+                parent.replaceChild(placeholder, img);
+                if (window.lucide) window.lucide.createIcons({ nodes: [placeholder] });
+                return;
+            }
+
+            // 4. Chat Message Images
+            if (img.classList.contains('dm-msg-img') || img.classList.contains('js-msg-img')) {
+                var parent = img.parentElement;
+                if (!parent) return;
+                var placeholder = document.createElement('div');
+                placeholder.className = 'dm-msg-images dm-msg-images--single';
+                placeholder.style.display = 'flex';
+                placeholder.style.flexDirection = 'column';
+                placeholder.style.alignItems = 'center';
+                placeholder.style.justifyContent = 'center';
+                placeholder.style.background = '#f8fafc';
+                placeholder.style.border = '1px dashed #cbd5e1';
+                placeholder.style.borderRadius = '12px';
+                placeholder.style.padding = '16px';
+                placeholder.style.color = '#94a3b8';
+                placeholder.style.gap = '6px';
+                placeholder.innerHTML = '<i data-lucide="image-off" size="24"></i>' +
+                    '<span style="font-size: 11px; font-weight: 500; opacity: 0.8;">No image found</span>';
+                parent.replaceChild(placeholder, img);
+                if (window.lucide) window.lucide.createIcons({ nodes: [placeholder] });
+                return;
+            }
+        }, true);
+    })();
+</script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('service-worker.js')
+                .then(function(registration) {
+                    console.log('ChatRox ServiceWorker registered successfully with scope: ', registration.scope);
+                })
+                .catch(function(err) {
+                    console.log('ChatRox ServiceWorker registration failed: ', err);
+                });
+        });
+    }
 </script>
 </body>
 </html>

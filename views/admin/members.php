@@ -248,8 +248,8 @@
 </div>
 
 <!-- Generate Invite Link Modal -->
-<div class="modal" id="generateInviteModal">
-    <div class="modal-content" style="max-width: 480px;">
+<div class="modal-overlay" id="generateInviteModal">
+    <div class="modal-card" style="max-width: 480px;">
         <div class="modal-header">
             <div class="modal-header-title" style="display: flex; align-items: center; gap: 12px;">
                 <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--indigo-50); color: var(--indigo-600); display: flex; align-items: center; justify-content: center;">

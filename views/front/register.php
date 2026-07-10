@@ -47,50 +47,50 @@
             </div>
 
             <form id="registerForm" action="<?php echo \App\Core\View::url('register'); ?>" method="POST" enctype="multipart/form-data">
-                <?php echo \App\Core\Session::csrfField(); ?>
+                 <?php echo \App\Core\Session::csrfField(); ?>
                 <!-- Step 1: Company Information -->
                 <div class="step-content active" id="step-1">
                     <div class="auth-grid">
                         <div class="auth-group auth-grid-full">
                             <label class="auth-label">Company Name *</label>
                             <input type="text" name="company_name" class="auth-input" style="padding-left: 20px;"
-                                placeholder="Nexus Tech Inc." required>
+                                placeholder="Nexus Tech Inc." value="<?php echo htmlspecialchars($_POST['company_name'] ?? ''); ?>" required>
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">Industry *</label>
                             <select name="industry" class="auth-input" style="padding-left: 20px;" required>
-                                <option value="" disabled selected>Select Industry</option>
-                                <option value="technology">Technology</option>
-                                <option value="healthcare">Healthcare</option>
-                                <option value="finance">Finance</option>
-                                <option value="education">Education</option>
-                                <option value="manufacturing">Manufacturing</option>
-                                <option value="retail">Retail</option>
-                                <option value="services">Services</option>
-                                <option value="other">Other</option>
+                                <option value="" disabled <?php echo empty($_POST['industry']) ? 'selected' : ''; ?>>Select Industry</option>
+                                <option value="technology" <?php echo (($_POST['industry'] ?? '') === 'technology') ? 'selected' : ''; ?>>Technology</option>
+                                <option value="healthcare" <?php echo (($_POST['industry'] ?? '') === 'healthcare') ? 'selected' : ''; ?>>Healthcare</option>
+                                <option value="finance" <?php echo (($_POST['industry'] ?? '') === 'finance') ? 'selected' : ''; ?>>Finance</option>
+                                <option value="education" <?php echo (($_POST['industry'] ?? '') === 'education') ? 'selected' : ''; ?>>Education</option>
+                                <option value="manufacturing" <?php echo (($_POST['industry'] ?? '') === 'manufacturing') ? 'selected' : ''; ?>>Manufacturing</option>
+                                <option value="retail" <?php echo (($_POST['industry'] ?? '') === 'retail') ? 'selected' : ''; ?>>Retail</option>
+                                <option value="services" <?php echo (($_POST['industry'] ?? '') === 'services') ? 'selected' : ''; ?>>Services</option>
+                                <option value="other" <?php echo (($_POST['industry'] ?? '') === 'other') ? 'selected' : ''; ?>>Other</option>
                             </select>
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">Organization Type *</label>
                             <select name="organization_type" class="auth-input" style="padding-left: 20px;" required>
-                                <option value="" disabled selected>Select Type</option>
-                                <option value="corporation">Corporation</option>
-                                <option value="llc">LLC</option>
-                                <option value="partnership">Partnership</option>
-                                <option value="sole_proprietorship">Sole Proprietorship</option>
-                                <option value="non_profit">Non-Profit</option>
-                                <option value="other">Other</option>
+                                <option value="" disabled <?php echo empty($_POST['organization_type']) ? 'selected' : ''; ?>>Select Type</option>
+                                <option value="corporation" <?php echo (($_POST['organization_type'] ?? '') === 'corporation') ? 'selected' : ''; ?>>Corporation</option>
+                                <option value="llc" <?php echo (($_POST['organization_type'] ?? '') === 'llc') ? 'selected' : ''; ?>>LLC</option>
+                                <option value="partnership" <?php echo (($_POST['organization_type'] ?? '') === 'partnership') ? 'selected' : ''; ?>>Partnership</option>
+                                <option value="sole_proprietorship" <?php echo (($_POST['organization_type'] ?? '') === 'sole_proprietorship') ? 'selected' : ''; ?>>Sole Proprietorship</option>
+                                <option value="non_profit" <?php echo (($_POST['organization_type'] ?? '') === 'non_profit') ? 'selected' : ''; ?>>Non-Profit</option>
+                                <option value="other" <?php echo (($_POST['organization_type'] ?? '') === 'other') ? 'selected' : ''; ?>>Other</option>
                             </select>
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">Company Email *</label>
                             <input type="email" name="company_email" class="auth-input" style="padding-left: 20px;"
-                                placeholder="contact@nexus.com" required>
+                                placeholder="contact@nexus.com" value="<?php echo htmlspecialchars($_POST['company_email'] ?? ''); ?>" required>
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">Company Phone</label>
                             <input type="tel" name="company_phone" class="auth-input" style="padding-left: 20px;"
-                                placeholder="+1 234 567 890">
+                                placeholder="+1 234 567 890" value="<?php echo htmlspecialchars($_POST['company_phone'] ?? ''); ?>">
                         </div>
                         <div class="auth-group auth-grid-full">
                             <label class="auth-label">Company Logo</label>
@@ -112,25 +112,27 @@
                         <div class="auth-group auth-grid-full">
                             <label class="auth-label">Address *</label>
                             <input type="text" name="address_line1" class="auth-input" style="padding-left: 20px;"
-                                placeholder="123 Silicon Valley Road" required>
+                                placeholder="123 Silicon Valley Road" value="<?php echo htmlspecialchars($_POST['address_line1'] ?? ''); ?>" required>
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">City *</label>
                             <input type="text" name="city" class="auth-input" style="padding-left: 20px;"
-                                placeholder="San Francisco" required>
+                                placeholder="San Francisco" value="<?php echo htmlspecialchars($_POST['city'] ?? ''); ?>" required>
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">State (Optional)</label>
-                            <input type="text" name="state" class="auth-input" style="padding-left: 20px;" placeholder="California">
+                            <input type="text" name="state" class="auth-input" style="padding-left: 20px;" placeholder="California"
+                                value="<?php echo htmlspecialchars($_POST['state'] ?? ''); ?>">
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">Country *</label>
                             <input type="text" name="country" class="auth-input" style="padding-left: 20px;"
-                                placeholder="United States" required>
+                                placeholder="United States" value="<?php echo htmlspecialchars($_POST['country'] ?? ''); ?>" required>
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">ZIP Code (Optional)</label>
-                            <input type="text" name="postal_code" class="auth-input" style="padding-left: 20px;" placeholder="94103">
+                            <input type="text" name="postal_code" class="auth-input" style="padding-left: 20px;" placeholder="94103"
+                                value="<?php echo htmlspecialchars($_POST['postal_code'] ?? ''); ?>">
                         </div>
                     </div>
                 </div>
@@ -141,27 +143,28 @@
                         <div class="auth-group">
                             <label class="auth-label">First Name *</label>
                             <input type="text" name="first_name" class="auth-input" style="padding-left: 20px;" placeholder="John"
-                                required>
+                                value="<?php echo htmlspecialchars($_POST['first_name'] ?? ''); ?>" required>
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">Last Name *</label>
                             <input type="text" name="last_name" class="auth-input" style="padding-left: 20px;" placeholder="Doe"
-                                required>
+                                value="<?php echo htmlspecialchars($_POST['last_name'] ?? ''); ?>" required>
                         </div>
                         <div class="auth-group auth-grid-full">
                             <label class="auth-label">Username *</label>
                             <input type="text" name="username" class="auth-input" style="padding-left: 20px;" placeholder="johndoe123"
-                                required>
+                                pattern="^[a-z0-9._-]+$" title="Username must be lowercase and contain only letters, numbers, dots, hyphens, or underscores (no spaces)."
+                                value="<?php echo htmlspecialchars($_POST['username'] ?? ''); ?>" required>
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">Email *</label>
                             <input type="email" name="email" class="auth-input" style="padding-left: 20px;"
-                                placeholder="john@nexus.com" required>
+                                placeholder="john@nexus.com" value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>" required>
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">Phone *</label>
                             <input type="tel" name="phone" class="auth-input" style="padding-left: 20px;"
-                                placeholder="+1 987 654 321" required>
+                                placeholder="+1 987 654 321" value="<?php echo htmlspecialchars($_POST['phone'] ?? ''); ?>" required>
                         </div>
                         <div class="auth-group">
                             <label class="auth-label">Password *</label>
@@ -204,9 +207,15 @@
     </div>
 
     <script>
-        lucide.createIcons();
+        if (window.lucide) {
+            lucide.createIcons();
+        } else {
+            document.addEventListener('DOMContentLoaded', function () {
+                if (window.lucide) lucide.createIcons();
+            });
+        }
 
-        let currentStep = 1;
+        let currentStep = <?php echo (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') ? '3' : '1'; ?>;
         const totalSteps = 3;
 
         const btnNext = document.getElementById('btnNext');

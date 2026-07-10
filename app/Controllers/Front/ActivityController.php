@@ -22,6 +22,9 @@ class ActivityController extends FrontController
                 WHERE recipient_id = ? AND workspace_id = ? AND read_at IS NULL
             ");
             $stmt->execute([$memberId, $workspaceId]);
+
+            // Invalidate sidebar badge counts cache so the update reflects immediately
+            \App\Helpers\Cache::delete("nav_badges_{$memberId}_{$workspaceId}");
         }
 
         $activityItems = ActivityFeed::items();

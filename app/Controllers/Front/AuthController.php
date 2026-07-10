@@ -22,12 +22,6 @@ class AuthController extends Controller
         }
 
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-            if (!Session::verifyCsrf()) {
-                $this->renderAuth('login', 'Sign In', [
-                    'error' => 'Invalid form submission. Please try again.',
-                ]);
-                return;
-            }
             $this->authenticate();
             return;
         }
@@ -45,12 +39,6 @@ class AuthController extends Controller
         }
 
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-            if (!Session::verifyCsrf()) {
-                $this->renderAuth('register', 'Register Account', [
-                    'error' => 'Invalid form submission. Please try again.',
-                ]);
-                return;
-            }
             $this->processRegistration();
             return;
         }
@@ -92,11 +80,8 @@ class AuthController extends Controller
             return;
         }
 
-        // Find user by username or email
+        // Find user by username only
         $user = User::findByUsername($username);
-        if (!$user) {
-            $user = User::findByEmail($username);
-        }
 
         if (!$user || !password_verify($password, $user['password_hash'])) {
             $this->renderAuth('login', 'Sign In', [
@@ -205,6 +190,13 @@ class AuthController extends Controller
             return;
         }
 
+        if (!preg_match('/^[a-z0-9._-]+$/', $username)) {
+            $this->renderAuth('register', 'Register Account', [
+                'error' => 'Username must be lowercase and contain only letters, numbers, dots, hyphens, or underscores (no spaces).',
+            ]);
+            return;
+        }
+
         // Check if username or email is already taken
         if (User::findByUsername($username)) {
             $this->renderAuth('register', 'Register Account', [
@@ -282,8 +274,7 @@ class AuthController extends Controller
             ]);
 
             // 3. Create User
-            $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
-            $passwordHash = password_hash($password, $algo);
+            $passwordHash = User::hashPassword($password);
             $userId = User::create([
                 'email' => $email,
                 'username' => $username,
@@ -442,4 +433,61 @@ class AuthController extends Controller
             ]);
         }
     }
+
+    public function forgotPassword(): void
+    {
+        if (Session::isLoggedIn()) {
+            $this->redirect('/');
+        }
+
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+            $this->processForgotPassword();
+            return;
+        }
+
+        $flash = Session::getFlash();
+        $this->renderAuth('forgot-password', 'Forgot Password', [
+            'error' => ($flash['type'] ?? '') === 'error' ? ($flash['message'] ?? null) : null,
+            'success' => ($flash['type'] ?? '') === 'success' ? ($flash['message'] ?? null) : null,
+        ]);
+    }
+
+    private function processForgotPassword(): void
+    {
+        $identity = trim((string) ($_POST['identity'] ?? ''));
+
+        if ($identity === '') {
+            Session::setFlash('error', 'Please enter your username or email address.');
+            $this->redirect('/forgot-password');
+        }
+
+        $db = Database::connection();
+        
+        $stmt = $db->prepare('SELECT id FROM users WHERE username = ? OR email = ?');
+        $stmt->execute([$identity, $identity]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$user) {
+            Session::setFlash('error', 'No account found with that username or email address.');
+            $this->redirect('/forgot-password');
+        }
+
+        $userId = (int)$user['id'];
+
+        $stmt = $db->prepare('SELECT id FROM password_reset_requests WHERE user_id = ? AND status = \'pending\'');
+        $stmt->execute([$userId]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($existing) {
+            Session::setFlash('success', 'You already have a pending reset request. Please wait or contact your administrator.');
+            $this->redirect('/forgot-password');
+        }
+
+        $stmt = $db->prepare('INSERT INTO password_reset_requests (user_id, status) VALUES (?, \'pending\')');
+        $stmt->execute([$userId]);
+
+        Session::setFlash('success', 'Your password reset request has been sent to the administrator. Please contact them to get your new password.');
+        $this->redirect('/forgot-password');
+    }
 }
+

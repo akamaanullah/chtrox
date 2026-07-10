@@ -46,8 +46,12 @@ class MessageDateDivider
     }
 
     /** @param array<int, array<string, mixed>> $messages */
-    public static function maybeRenderAfter(array $messages, int $index): void
+    public static function maybeRenderAfter(array $messages, int $index, int $initialVisible = 999999): void
     {
+        if ($index >= $initialVisible) {
+            return;
+        }
+
         $current = $messages[$index] ?? null;
         if (!$current) {
             return;
@@ -58,7 +62,10 @@ class MessageDateDivider
             return;
         }
 
-        $next = $messages[$index + 1] ?? null;
+        $next = null;
+        if ($index + 1 < $initialVisible) {
+            $next = $messages[$index + 1] ?? null;
+        }
         $nextKey = $next ? self::dayKey((string)($next['created_at'] ?? '')) : null;
 
         if ($nextKey !== $currentKey) {

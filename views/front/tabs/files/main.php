@@ -32,9 +32,9 @@
                 <div class="per-page-selector">
                     <span>Rows per page:</span>
                     <select id="filesPerPage" class="files-per-page-select">
-                        <option value="8">8</option>
-                        <option value="16" selected>16</option>
-                        <option value="32">32</option>
+                        <option value="9">9</option>
+                        <option value="18" selected>18</option>
+                        <option value="36">36</option>
                     </select>
                 </div>
 

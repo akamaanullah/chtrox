@@ -47,4 +47,10 @@ class User extends Model
         ]);
         return (int) $db->lastInsertId();
     }
+
+    public static function hashPassword(string $password): string
+    {
+        $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
+        return password_hash($password, $algo);
+    }
 }

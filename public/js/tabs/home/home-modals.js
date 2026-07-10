@@ -65,3 +65,55 @@ function closeAnnouncementModal() {
     var modal = document.getElementById('announcementModal');
     if (modal) modal.classList.remove('active');
 }
+
+function copyChromeFlagUrl(btn) {
+    var text = 'chrome://flags/#unsafely-treat-insecure-origin-as-secure';
+    
+    // Check if clipboard API is supported
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+            .then(function() {
+                showCopySuccess(btn);
+            })
+            .catch(function(err) {
+                fallbackCopyText(text, btn);
+            });
+    } else {
+        fallbackCopyText(text, btn);
+    }
+}
+
+function showCopySuccess(btn) {
+    var icon = btn.querySelector('i');
+    if (icon) {
+        icon.setAttribute('data-lucide', 'check');
+        icon.style.color = '#10b981'; // Green success color
+        if (window.lucide) window.lucide.createIcons({ nodes: [btn] });
+        setTimeout(function() {
+            icon.setAttribute('data-lucide', 'copy');
+            icon.style.color = '';
+            if (window.lucide) window.lucide.createIcons({ nodes: [btn] });
+        }, 2000);
+    }
+}
+
+function fallbackCopyText(text, btn) {
+    var textArea = document.createElement("textarea");
+    textArea.value = text;
+    // Avoid scrolling to bottom
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.position = "fixed";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+        var successful = document.execCommand('copy');
+        if (successful) {
+            showCopySuccess(btn);
+        }
+    } catch (err) {
+        console.error('Fallback copy failed', err);
+    }
+    document.body.removeChild(textArea);
+}

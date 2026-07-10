@@ -42,7 +42,9 @@
                 </div>
                 <div class="auth-group auth-grid-full">
                     <label class="auth-label">Username *</label>
-                    <input type="text" name="username" class="auth-input" style="padding-left: 20px;" placeholder="johndoe123" value="<?php echo \App\Core\View::e($_POST['username'] ?? ''); ?>" required>
+                    <input type="text" name="username" class="auth-input" style="padding-left: 20px;" placeholder="johndoe123" 
+                        pattern="^[a-z0-9._-]+$" title="Username must be lowercase and contain only letters, numbers, dots, hyphens, or underscores (no spaces)."
+                        value="<?php echo \App\Core\View::e($_POST['username'] ?? ''); ?>" required>
                 </div>
                 <div class="auth-group">
                     <label class="auth-label">Email Address *</label>

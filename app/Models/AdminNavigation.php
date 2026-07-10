@@ -25,6 +25,8 @@ class AdminNavigation extends Model
                     ['id' => 'announcements', 'icon' => 'megaphone', 'label' => 'Announcements', 'short_label' => 'News'],
                     ['id' => 'files', 'icon' => 'file-text', 'label' => 'Files & Media', 'short_label' => 'Files'],
                     ['id' => 'activity', 'icon' => 'activity', 'label' => 'Recent Activities', 'short_label' => 'Activity'],
+                    ['id' => 'feedback', 'icon' => 'message-square', 'label' => 'Feedbacks & Reports', 'short_label' => 'Feedbacks'],
+                    ['id' => 'resets', 'icon' => 'key', 'label' => 'Reset Requests', 'short_label' => 'Resets'],
                 ],
             ],
         ];

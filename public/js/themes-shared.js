@@ -31,6 +31,18 @@
         for (var i = 0; i < keys.length; i++) {
             document.documentElement.style.setProperty(keys[i], colors[keys[i]]);
         }
+
+        // Dynamically update meta theme-color tag for PWA standalone window title bar
+        var primaryColor = colors['--indigo-600'] || '#4f46e5';
+        var metaTheme = document.getElementById('metaThemeColor');
+        if (!metaTheme) {
+            metaTheme = document.createElement('meta');
+            metaTheme.setAttribute('name', 'theme-color');
+            metaTheme.setAttribute('id', 'metaThemeColor');
+            document.getElementsByTagName('head')[0].appendChild(metaTheme);
+        }
+        metaTheme.setAttribute('content', primaryColor);
+
         return true;
     }
 

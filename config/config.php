@@ -101,4 +101,5 @@ define('ADMIN_ASSETS', [
     'announcements' => ['js/announcements.js'],
     'files' => ['js/files.js'],
     'activity' => ['js/activity.js'],
+    'feedback' => [],
 ]);

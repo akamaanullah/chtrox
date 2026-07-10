@@ -57,6 +57,8 @@ class AnnouncementsController extends AdminController
                 $endDate . ' 23:59:59'
             ]);
 
+            $announcementId = (int)$db->lastInsertId();
+
             AuditLog::log(
                 $workspaceId,
                 $adminMemberId,
@@ -65,7 +67,56 @@ class AnnouncementsController extends AdminController
                 "Published new announcement: {$title}"
             );
 
-            $this->jsonResponse(['success' => true, 'message' => 'Announcement posted successfully.']);
+            // Fetch all active workspace members to notify them
+            $memberStmt = $db->prepare("
+                SELECT id 
+                FROM workspace_members 
+                WHERE workspace_id = ? 
+                  AND status = 'active'
+            ");
+            $memberStmt->execute([$workspaceId]);
+            $recipientIds = $memberStmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if (!empty($recipientIds)) {
+                $notifStmt = $db->prepare("
+                    INSERT INTO notifications (workspace_id, recipient_id, type, actor_id, title, body, body_html, reference_type, reference_id)
+                    VALUES (?, ?, 'system', ?, ?, ?, ?, 'announcement', ?)
+                ");
+                
+                $notifTitle = 'New Announcement';
+                $notifBody = 'Posted a new announcement: "' . $title . '"';
+                $notifBodyHtml = 'Posted a new announcement: <span class="text-primary font-bold">' . htmlspecialchars($title) . '</span>';
+
+                foreach ($recipientIds as $recipientId) {
+                    $notifStmt->execute([
+                        $workspaceId,
+                        (int)$recipientId,
+                        $adminMemberId,
+                        $notifTitle,
+                        $notifBody,
+                        $notifBodyHtml,
+                        $announcementId
+                    ]);
+
+                    // Invalidate nav badges cache for this recipient
+                    \App\Helpers\Cache::delete("nav_badges_{$recipientId}_{$workspaceId}");
+                }
+            }
+
+            // Generate a WebSocket ticket for the admin so they can connect and broadcast
+            $userId = (int)$admin['id'];
+            $sessionToken = $admin['session_token'] ?? '';
+            $ticket = \App\Models\WebSocketTicket::createTicket($userId, $adminMemberId, $workspaceId, $sessionToken);
+
+            $this->jsonResponse([
+                'success' => true,
+                'message' => 'Announcement posted successfully.',
+                'ticket' => $ticket,
+                'workspace_id' => $workspaceId,
+                'recipient_ids' => array_map('intval', $recipientIds),
+                'announcement_id' => $announcementId,
+                'announcement_title' => $title
+            ]);
         } catch (\Exception $e) {
             $this->jsonResponse(['error' => 'Database error: ' . $e->getMessage()], 500);
         }

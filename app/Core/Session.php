@@ -10,6 +10,15 @@ class Session
     public static function init(): void
     {
         if (session_status() === PHP_SESSION_NONE) {
+            // Set local project directory for sessions to avoid CyberPanel permission conflicts
+            $sessionPath = dirname(__DIR__, 2) . '/storage/sessions';
+            if (!is_dir($sessionPath)) {
+                @mkdir($sessionPath, 0777, true);
+            }
+            if (is_dir($sessionPath) && is_writable($sessionPath)) {
+                session_save_path($sessionPath);
+            }
+
             ini_set('session.use_only_cookies', '1');
             ini_set('session.use_strict_mode', '1');
             ini_set('session.cookie_httponly', '1');
@@ -18,6 +27,9 @@ class Session
             if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
                 ini_set('session.cookie_secure', '1');
             }
+
+            // Set unique cookie name to prevent conflicts with other projects sharing the same domain/IP
+            session_name('chatrox_session');
 
             session_start();
         }

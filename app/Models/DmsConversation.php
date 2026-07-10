@@ -39,18 +39,21 @@ class DmsConversation extends Model
                 ), 'offline') as presence_status
             FROM workspace_members wm
             JOIN users u ON wm.user_id = u.id
-            WHERE wm.workspace_id = ? AND wm.status = 'active' AND wm.id != ?
+            WHERE wm.workspace_id = ? AND wm.status = 'active'
             ORDER BY u.first_name ASC, u.last_name ASC
         ");
-        $stmt->execute([$workspaceId, $memberId]);
+        $stmt->execute([$workspaceId]);
         $rows = $stmt->fetchAll();
 
         $users = [];
         foreach ($rows as $row) {
+            $isMe = ((int)$row['member_id'] === (int)$memberId);
+            $name = $isMe ? 'Me' : ($row['first_name'] . ' ' . $row['last_name']);
+
             $users[$row['username']] = [
                 'id' => $row['member_id'],
                 'username' => $row['username'],
-                'name' => $row['first_name'] . ' ' . $row['last_name'],
+                'name' => $name,
                 'avatar' => \App\Core\View::avatar($row['avatar_path']),
                 'presence_status' => $row['presence_status']
             ];
@@ -121,11 +124,11 @@ class DmsConversation extends Model
                 ) as unread_count
             FROM conversations c
             JOIN conversation_participants cp_me ON c.id = cp_me.conversation_id AND cp_me.workspace_member_id = :member_id3 AND cp_me.left_at IS NULL
-            JOIN conversation_participants cp_other ON c.id = cp_other.conversation_id AND cp_other.workspace_member_id != :member_id4 AND cp_other.left_at IS NULL
-            JOIN workspace_members other_wm ON cp_other.workspace_member_id = other_wm.id
-            JOIN users other_u ON other_wm.user_id = other_u.id
+            LEFT JOIN conversation_participants cp_other ON c.id = cp_other.conversation_id AND cp_other.workspace_member_id != :member_id4 AND cp_other.left_at IS NULL
+            LEFT JOIN workspace_members other_wm ON COALESCE(cp_other.workspace_member_id, cp_me.workspace_member_id) = other_wm.id
+            LEFT JOIN users other_u ON other_wm.user_id = other_u.id
             LEFT JOIN messages m ON m.id = c.last_message_id
-            LEFT JOIN conversation_read_cursors crc_other ON crc_other.conversation_id = c.id AND crc_other.workspace_member_id = cp_other.workspace_member_id
+            LEFT JOIN conversation_read_cursors crc_other ON crc_other.conversation_id = c.id AND crc_other.workspace_member_id = COALESCE(cp_other.workspace_member_id, cp_me.workspace_member_id)
             LEFT JOIN conversation_read_cursors crc ON crc.conversation_id = c.id AND crc.workspace_member_id = :member_id1
             WHERE c.workspace_id = :workspace_id AND c.type = 'dm'
               AND (c.last_message_id IS NOT NULL OR other_u.username = :active_with)
@@ -189,10 +192,13 @@ class DmsConversation extends Model
                 }
             }
 
+            $isMe = ((int)$row['other_member_id'] === $memberId);
+            $name = $isMe ? 'Me' : ($row['first_name'] . ' ' . $row['last_name']);
+
             $items[] = [
                 'id' => $row['other_username'],
                 'conversation_id' => (int)$row['conversation_id'],
-                'name' => $row['first_name'] . ' ' . $row['last_name'],
+                'name' => $name,
                 'avatar' => \App\Core\View::avatar($row['avatar_path']),
                 'preview' => $preview,
                 'time' => $formattedTime,
@@ -229,9 +235,9 @@ class DmsConversation extends Model
                 COALESCE(up.status, 'offline') as presence_status
             FROM conversations c
             JOIN conversation_participants cp_me ON c.id = cp_me.conversation_id AND cp_me.workspace_member_id = :member_id AND cp_me.left_at IS NULL
-            JOIN conversation_participants cp_other ON c.id = cp_other.conversation_id AND cp_other.workspace_member_id != :member_id AND cp_other.left_at IS NULL
-            JOIN workspace_members other_wm ON cp_other.workspace_member_id = other_wm.id
-            JOIN users other_u ON other_wm.user_id = other_u.id
+            LEFT JOIN conversation_participants cp_other ON c.id = cp_other.conversation_id AND cp_other.workspace_member_id != :member_id AND cp_other.left_at IS NULL
+            LEFT JOIN workspace_members other_wm ON COALESCE(cp_other.workspace_member_id, cp_me.workspace_member_id) = other_wm.id
+            LEFT JOIN users other_u ON other_wm.user_id = other_u.id
             LEFT JOIN user_presence up ON other_u.id = up.user_id
             WHERE c.workspace_id = :workspace_id AND c.type = 'dm' AND c.last_message_id IS NOT NULL
             ORDER BY c.last_message_at DESC, c.id DESC
@@ -251,10 +257,13 @@ class DmsConversation extends Model
                 continue;
             }
             $seenMemberIds[] = $otherMemberId;
+            $isMe = ($otherMemberId === $memberId);
+            $name = $isMe ? 'Me' : ($row['first_name'] . ' ' . $row['last_name']);
+
             $frequent[] = [
                 'id' => $otherMemberId,
                 'username' => $row['username'],
-                'name' => $row['first_name'] . ' ' . $row['last_name'],
+                'name' => $name,
                 'avatar' => \App\Core\View::avatar($row['avatar_path']),
                 'presence_status' => $row['presence_status']
             ];
@@ -936,6 +945,7 @@ class DmsConversation extends Model
 
         $lastReadMsgId = $otherPart ? (int) $otherPart['last_read_message_id'] : 0;
         $otherOnline = $otherPart ? ($otherPart['presence_status'] === 'online') : false;
+        $isSelfChat = !$otherPart;
 
         foreach ($messages as $i => $message) {
             if (($message['side'] ?? '') !== 'me') {
@@ -943,7 +953,9 @@ class DmsConversation extends Model
             }
 
             $messageId = $message['id'] ?? 0;
-            if ($messageId <= $lastReadMsgId) {
+            if ($isSelfChat) {
+                $status = 'read';
+            } elseif ($messageId <= $lastReadMsgId) {
                 $status = 'read';
             } elseif ($otherOnline) {
                 $status = 'delivered';
@@ -1019,7 +1031,9 @@ class DmsConversation extends Model
                 VALUES (?, ?)
             ");
             $stmt->execute([$conversationId, $memberId]);
-            $stmt->execute([$conversationId, $otherMemberId]);
+            if ($memberId !== $otherMemberId) {
+                $stmt->execute([$conversationId, $otherMemberId]);
+            }
 
             $db->commit();
             return (int)$conversationId;

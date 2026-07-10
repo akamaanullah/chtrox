@@ -15,11 +15,23 @@ $has_older_messages = !empty($has_older_messages);
 $oldest_message_id = (int)($oldest_message_id ?? 0);
 ?>
 <div class="dm-chat-screen" data-conversation-id="<?php echo $conversation_id; ?>" data-with-username="<?php echo htmlspecialchars($with_id); ?>" data-with-member-id="<?php echo $with_user['id']; ?>" data-has-older="<?php echo $has_older_messages ? '1' : '0'; ?>" data-oldest-message-id="<?php echo $oldest_message_id; ?>">
+    <?php if (empty($with_user['id'])): ?>
+        <div class="dm-chat-empty-state" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 40px; text-align: center; color: var(--text-slate); background: #f8fafc;">
+            <div style="background: rgba(79, 70, 229, 0.1); color: var(--indigo-600); padding: 24px; border-radius: 50%; margin-bottom: 24px; display: inline-flex; align-items: center; justify-content: center;">
+                <i data-lucide="users" style="width: 48px; height: 48px;"></i>
+            </div>
+            <h2 style="font-size: 24px; font-weight: 800; color: #0f172a; margin-bottom: 8px;">No Users Available</h2>
+            <p style="font-size: 15px; color: #64748b; max-width: 320px; margin-bottom: 24px; line-height: 1.5;">You are currently the only active member in this workspace. Invite colleagues to start direct messaging.</p>
+            <a href="<?php echo \App\Core\View::url('home'); ?>" class="btn-dark" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 12px 24px; border-radius: 12px; background: var(--indigo-600); color: #fff;">
+                <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i> Invite Members
+            </a>
+        </div>
+    <?php else: ?>
     <div class="dm-chat-header">
         <a href="dms" class="dm-chat-back" title="Back to DMs">
             <i data-lucide="arrow-left" size="20"></i>
         </a>
-        <div class="dm-chat-header-user" data-member-id="<?php echo $with_user['id']; ?>">
+        <div class="dm-chat-header-user js-chat-details-open" data-member-id="<?php echo $with_user['id']; ?>" style="cursor: pointer;">
             <div class="dm-chat-header-avatar">
                 <img src="<?php echo htmlspecialchars($with_user['avatar']); ?>" alt="">
                 <span class="presence-dot dm-chat-header-status dm-chat-header-status--<?php echo htmlspecialchars($contact_profile['presence_status'] ?? 'offline'); ?>"></span>
@@ -196,7 +208,7 @@ $oldest_message_id = (int)($oldest_message_id ?? 0);
                         aria-label="Delete"><i data-lucide="trash-2" size="16"></i></button>
                 </div>
             </div>
-            <?php MessageDateDivider::maybeRenderAfter($messages, $i); ?>
+            <?php MessageDateDivider::maybeRenderAfter($messages, $i, $initial_visible ?? 999999); ?>
         <?php endforeach; ?>
         <?php if (count($messages) > $initial_visible || $has_older_messages): ?>
         <div class="dm-load-more-wrap" id="dmLoadMoreWrap">
@@ -447,8 +459,10 @@ $oldest_message_id = (int)($oldest_message_id ?? 0);
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentMedia" role="tabpanel"
                     hidden>
                     <div class="dm-details-media-grid" id="dmDetailsMediaGrid">
+                        <?php $mediaCount = 0; ?>
                         <?php foreach ($conversation_media as $item): ?>
-                            <button type="button" class="dm-details-media-thumb-btn js-details-media-jump"
+                            <?php $mediaCount++; ?>
+                            <button type="button" class="dm-details-media-thumb-btn js-details-media-jump<?php echo $mediaCount > 21 ? ' dm-details-media-thumb--hidden' : ''; ?>"
                                 data-message-id="<?php echo (int)$item['message_id']; ?>"
                                 aria-label="<?php echo htmlspecialchars($item['label']); ?>">
                                 <img src="<?php echo htmlspecialchars($item['url']); ?>" alt="<?php echo htmlspecialchars($item['label']); ?>"
@@ -456,6 +470,11 @@ $oldest_message_id = (int)($oldest_message_id ?? 0);
                             </button>
                         <?php endforeach; ?>
                     </div>
+                    <?php if (count($conversation_media) > 21): ?>
+                        <div class="dm-details-media-more-wrap" id="dmDetailsMediaMoreWrap" style="text-align: center; margin-top: 16px; padding-bottom: 16px;">
+                            <button type="button" class="profile-panel-btn profile-panel-btn--secondary js-details-media-load-more" style="width: 100%; margin: 0; padding: 10px; font-size: 13px;">Load More</button>
+                        </div>
+                    <?php endif; ?>
                     <div class="dm-details-empty<?php echo empty($conversation_media) ? ' dm-details-empty--show' : ''; ?>" id="dmDetailsMediaEmpty"<?php echo !empty($conversation_media) ? ' hidden' : ''; ?>>No media shared yet</div>
                 </div>
                 <div class="dm-details-content dm-details-content--hidden" id="dmDetailsContentFiles" role="tabpanel"
@@ -487,4 +506,5 @@ $oldest_message_id = (int)($oldest_message_id ?? 0);
             </div>
         </div>
     </div>
+    <?php endif; ?>
 </div>

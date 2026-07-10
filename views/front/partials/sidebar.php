@@ -65,6 +65,10 @@ use App\Core\View;
                                 <i data-lucide="settings" size="16"></i>
                                 <span>Settings</span>
                             </a>
+                            <a href="javascript:void(0)" onclick="openFeedbackModal()" class="more-option">
+                                <i data-lucide="message-square-plus" size="16"></i>
+                                <span>Feedback</span>
+                            </a>
                         </div>
                     </div>
                 <?php endif; ?>

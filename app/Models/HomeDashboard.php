@@ -423,11 +423,13 @@ class HomeDashboard extends Model
                 SELECT activity_type, message, created_at
                 FROM audit_logs
                 WHERE workspace_id = ?
+                  AND actor_member_id = ?
                 ORDER BY created_at DESC
                 LIMIT ?
             ");
             $stmt->bindValue(1, $workspaceId, PDO::PARAM_INT);
-            $stmt->bindValue(2, $limit, PDO::PARAM_INT);
+            $stmt->bindValue(2, $memberId, PDO::PARAM_INT);
+            $stmt->bindValue(3, $limit, PDO::PARAM_INT);
             $stmt->execute();
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -655,10 +657,10 @@ class HomeDashboard extends Model
     {
         // LOW-08: Use valid PHP DateTimeZone timezone identifiers (IANA)
         return [
-            ['id' => 'pk',  'label' => 'Pakistan',  'timezone' => 'Asia/Karachi'],
-            ['id' => 'hou', 'label' => 'Houston',   'timezone' => 'America/Chicago'],
-            ['id' => 'ny',  'label' => 'New York',  'timezone' => 'America/New_York'],
-            ['id' => 'phx', 'label' => 'Phoenix',   'timezone' => 'America/Phoenix'],
+            ['id' => 'ny',  'label' => 'New York',      'sublabel' => 'Eastern',   'timezone' => 'America/New_York'],
+            ['id' => 'hou', 'label' => 'Houston',       'sublabel' => 'Central',   'timezone' => 'America/Chicago'],
+            ['id' => 'den', 'label' => 'Denver',        'sublabel' => 'Mountain',  'timezone' => 'America/Denver'],
+            ['id' => 'la',  'label' => 'Los Angeles',   'sublabel' => 'Pacific',   'timezone' => 'America/Los_Angeles'],
         ];
     }
 
@@ -674,10 +676,11 @@ class HomeDashboard extends Model
         $stmt = self::db()->prepare("
             SELECT a.*, CONCAT(u.first_name, ' ', u.last_name) AS author_name
             FROM announcements a
-            JOIN workspace_members wm ON wm.id = a.created_by
-            JOIN users u ON u.id = wm.user_id
+            LEFT JOIN workspace_members wm ON wm.id = a.created_by
+            LEFT JOIN users u ON u.id = wm.user_id
             WHERE a.workspace_id = ?
-              AND NOW() BETWEEN a.start_date AND a.end_date
+              AND a.deleted_at IS NULL
+              AND CURRENT_DATE() BETWEEN DATE(a.start_date) AND DATE(a.end_date)
             ORDER BY a.created_at DESC
             LIMIT 3
         ");

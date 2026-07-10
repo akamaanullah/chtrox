@@ -110,6 +110,16 @@ class InviteController extends Controller
             return;
         }
 
+        if (!preg_match('/^[a-z0-9._-]+$/', $username)) {
+            $this->renderAuth('invite_register', 'Join Workspace', [
+                'workspaceName' => $invite['workspace_name'],
+                'email' => $isGeneric ? $inputEmail : $email,
+                'isGeneric' => $isGeneric,
+                'error' => 'Username must be lowercase and contain only letters, numbers, dots, hyphens, or underscores (no spaces).'
+            ]);
+            return;
+        }
+
         // Check unique fields
         if (User::findByUsername($username)) {
             $this->renderAuth('invite_register', 'Join Workspace', [
@@ -137,8 +147,7 @@ class InviteController extends Controller
             $db->beginTransaction();
 
             // Create User
-            $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
-            $passwordHash = password_hash($password, $algo);
+            $passwordHash = User::hashPassword($password);
 
             $userId = User::create([
                 'email' => $inputEmail,
@@ -171,7 +180,7 @@ class InviteController extends Controller
                 $workspaceId,
                 $memberId,
                 "$firstName $lastName",
-                'register',
+                'OTHER',
                 'Joined workspace via invitation link'
             );
 
