@@ -110,5 +110,11 @@ php bin/websocket-server.php
 
 ---
 
+## 👨‍💻 Developed By
+
+This project is developed and maintained by **[Mian Amaanullah](https://amaanullah.com)**. For collaborations, custom software development, or premium digital solutions, visit **[amaanullah.com](https://amaanullah.com)**.
+
+---
+
 ## 📄 License
 This project is licensed under the MIT License.
