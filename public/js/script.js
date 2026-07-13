@@ -333,4 +333,61 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- Profile Picture Viewer Modal ---
+    var avatarModal = document.getElementById('avatarViewerModal');
+    var avatarImgEl = document.getElementById('avatarViewerImg');
+    var avatarNameEl = document.getElementById('avatarViewerName');
+    var avatarCloseBtn = document.getElementById('avatarViewerClose');
+
+    function openAvatarViewer(src, name) {
+        if (!avatarModal || !avatarImgEl) {
+            avatarModal = document.getElementById('avatarViewerModal');
+            avatarImgEl = document.getElementById('avatarViewerImg');
+            avatarNameEl = document.getElementById('avatarViewerName');
+            avatarCloseBtn = document.getElementById('avatarViewerClose');
+        }
+        if (avatarModal && avatarImgEl) {
+            avatarImgEl.src = src;
+            if (avatarNameEl) {
+                avatarNameEl.textContent = name || 'Profile Picture';
+            }
+            avatarModal.style.display = 'flex';
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons({ nodes: [avatarModal] });
+            }
+        }
+    }
+
+    function closeAvatarViewer() {
+        if (avatarModal) {
+            avatarModal.style.display = 'none';
+        }
+        if (avatarImgEl) {
+            avatarImgEl.src = '';
+        }
+    }
+
+    document.addEventListener('click', function (e) {
+        var avatarImg = e.target.closest('.cc-avatar img, .cms-avatar, .avatar-sm img, .dm-chat-header-avatar img, .dm-welcome-card__avatar img, .mini-avatar img, .sidebar-user-avatar, .dm-details-avatar, .cc-member-avatar');
+        if (avatarImg) {
+            var src = avatarImg.tagName.toUpperCase() === 'IMG' ? avatarImg.src : avatarImg.querySelector('img')?.src;
+            if (src) {
+                e.preventDefault();
+                e.stopPropagation();
+                var altText = avatarImg.alt || 'Profile Picture';
+                openAvatarViewer(src, altText);
+            }
+        }
+
+        var closeBtn = e.target.closest('#avatarViewerClose');
+        if (closeBtn) {
+            closeAvatarViewer();
+        }
+        
+        var modalViewer = e.target.closest('#avatarViewerModal');
+        if (modalViewer && e.target === modalViewer) {
+            closeAvatarViewer();
+        }
+    });
+
 });

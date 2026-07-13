@@ -3520,12 +3520,12 @@
             refreshIcons();
         }
 
-        if (document.querySelector('.js-chat-details-open')) {
-            document.querySelector('.js-chat-details-open').addEventListener('click', function (e) {
+        document.querySelectorAll('.js-chat-details-open').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
                 e.preventDefault();
                 openDetailsPanel();
             });
-        }
+        });
         if (detailsOverlay) {
             detailsOverlay.addEventListener('click', function () { closeDetailsPanel(); });
         }

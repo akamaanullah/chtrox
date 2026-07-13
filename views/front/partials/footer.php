@@ -35,6 +35,7 @@ if ($currentUser) {
 
 View::render('partials/modals/create-channel-modal.php');
 View::render('partials/modals/feedback-modal.php');
+View::render('partials/modals/avatar-modal.php');
 View::render('partials/panels/profile-panel.php', [
     'currentUser' => $currentUser,
     'joinedChannels' => $joinedChannels
