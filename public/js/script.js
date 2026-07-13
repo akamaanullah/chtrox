@@ -368,25 +368,43 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.addEventListener('click', function (e) {
-        var avatarImg = e.target.closest('.cc-avatar img, .cms-avatar, .avatar-sm img, .dm-chat-header-avatar img, .dm-welcome-card__avatar img, .mini-avatar img, .sidebar-user-avatar, .dm-details-avatar, .cc-member-avatar');
-        if (avatarImg) {
-            var src = avatarImg.tagName.toUpperCase() === 'IMG' ? avatarImg.src : avatarImg.querySelector('img')?.src;
-            if (src) {
-                e.preventDefault();
-                e.stopPropagation();
-                var altText = avatarImg.alt || 'Profile Picture';
-                openAvatarViewer(src, altText);
+        // Close button or clicking outside modal
+        var closeBtn = e.target.closest('#avatarViewerClose');
+        if (closeBtn) { closeAvatarViewer(); return; }
+        var modalViewer = e.target.id === 'avatarViewerModal' ? e.target : null;
+        if (modalViewer) { closeAvatarViewer(); return; }
+
+        // 1. Explicit avatar trigger (People directory, channel sidebar members)
+        var avatarTrigger = e.target.closest('.js-open-avatar');
+        if (avatarTrigger) {
+            e.preventDefault();
+            e.stopPropagation();
+            var src, name;
+            // If the js-open-avatar element is itself an <img>
+            if (avatarTrigger.tagName === 'IMG') {
+                src = avatarTrigger.src;
+                name = avatarTrigger.getAttribute('data-name') || avatarTrigger.alt;
+            } else {
+                // It's a wrapper div with data-src / data-name
+                src = avatarTrigger.getAttribute('data-src');
+                name = avatarTrigger.getAttribute('data-name');
+                if (!src) {
+                    var childImg = avatarTrigger.querySelector('img');
+                    if (childImg) { src = childImg.src; name = name || childImg.alt; }
+                }
             }
+            if (src) openAvatarViewer(src, name || 'Profile Picture');
+            return;
         }
 
-        var closeBtn = e.target.closest('#avatarViewerClose');
-        if (closeBtn) {
-            closeAvatarViewer();
-        }
-        
-        var modalViewer = e.target.closest('#avatarViewerModal');
-        if (modalViewer && e.target === modalViewer) {
-            closeAvatarViewer();
+        // 2. DM details panel avatar - clicking the big avatar in side panel
+        var detailsAvatar = e.target.closest('.dm-details-avatar');
+        if (detailsAvatar) {
+            e.preventDefault();
+            e.stopPropagation();
+            var img = detailsAvatar.tagName === 'IMG' ? detailsAvatar : detailsAvatar.querySelector('img');
+            if (img && img.src) openAvatarViewer(img.src, img.alt || 'Profile Picture');
+            return;
         }
     });
 

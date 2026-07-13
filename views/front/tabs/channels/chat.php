@@ -491,21 +491,27 @@ if ($currentUserChannelRole === null && !empty($active_channel['id'])) {
                             </div>
                             <div class="cms-list">
                                 <?php foreach ($channel_members as $member): ?>
-                                <a href="<?php echo \App\Core\View::url('dms/' . $member['username']); ?>" class="cms-item" style="text-decoration: none; color: inherit; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                <div class="cms-item" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                                     <div class="cms-item-left">
                                         <img src="<?php echo htmlspecialchars($member['avatar']); ?>"
-                                            alt="<?php echo htmlspecialchars($member['name']); ?>" class="cms-avatar">
+                                            alt="<?php echo htmlspecialchars($member['name']); ?>"
+                                            class="cms-avatar js-open-avatar"
+                                            data-src="<?php echo htmlspecialchars($member['avatar']); ?>"
+                                            data-name="<?php echo htmlspecialchars($member['name']); ?>"
+                                            style="cursor: pointer;">
                                         <div class="cms-info">
-                                            <span class="cms-name">
-                                                <?php echo htmlspecialchars($member['name']); ?>
-                                                <?php if (in_array($member['channel_role'] ?? 'member', ['owner', 'admin'], true)): ?>
-                                                    <span class="cms-admin-badge" style="font-size: 10px; font-weight: 600; color: #0f766e; background: #f0fdf4; padding: 1px 6px; border-radius: 4px; margin-left: 6px; display: inline-block; vertical-align: middle;">Admin</span>
-                                                <?php endif; ?>
-                                            </span>
-                                            <span class="cms-role"><?php echo ($member['channel_role'] ?? 'member') === 'owner' ? 'Admin' : ucfirst(htmlspecialchars($member['channel_role'] ?? 'member')); ?></span>
+                                            <a href="<?php echo \App\Core\View::url('dms/' . $member['username']); ?>" style="text-decoration: none; color: inherit;">
+                                                <span class="cms-name">
+                                                    <?php echo htmlspecialchars($member['name']); ?>
+                                                    <?php if (in_array($member['channel_role'] ?? 'member', ['owner', 'admin'], true)): ?>
+                                                        <span class="cms-admin-badge" style="font-size: 10px; font-weight: 600; color: #0f766e; background: #f0fdf4; padding: 1px 6px; border-radius: 4px; margin-left: 6px; display: inline-block; vertical-align: middle;">Admin</span>
+                                                    <?php endif; ?>
+                                                </span>
+                                                <span class="cms-role"><?php echo ($member['channel_role'] ?? 'member') === 'owner' ? 'Admin' : ucfirst(htmlspecialchars($member['channel_role'] ?? 'member')); ?></span>
+                                            </a>
                                         </div>
                                     </div>
-                                </a>
+                                </div>
                                 <?php endforeach; ?>
                             </div>
                         </div>

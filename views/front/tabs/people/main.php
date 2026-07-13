@@ -41,12 +41,14 @@ $canInvite = in_array($currentUserRole, ['owner', 'admin'], true);
                 <div class="contact-card">
                     <div class="cc-shape shape-1"></div>
                     <div class="cc-shape shape-2"></div>
-                    <a href="<?php echo \App\Core\View::url('dms/' . $contact['username']); ?>" style="text-decoration: none; color: inherit; display: block; margin-bottom: 12px;">
-                        <div class="cc-avatar" style="margin: 0 auto 12px;">
-                            <img src="<?php echo htmlspecialchars($contact['avatar']); ?>"
-                                alt="<?php echo htmlspecialchars($contact['name']); ?>">
-                            <span class="status-indicator <?php echo htmlspecialchars($contact['status']); ?>"></span>
-                        </div>
+                    <div class="cc-avatar js-open-avatar" style="margin: 0 auto 12px; cursor: pointer;"
+                         data-src="<?php echo htmlspecialchars($contact['avatar']); ?>"
+                         data-name="<?php echo htmlspecialchars($contact['name']); ?>">
+                        <img src="<?php echo htmlspecialchars($contact['avatar']); ?>"
+                            alt="<?php echo htmlspecialchars($contact['name']); ?>">
+                        <span class="status-indicator <?php echo htmlspecialchars($contact['status']); ?>"></span>
+                    </div>
+                    <a href="<?php echo \App\Core\View::url('dms/' . $contact['username']); ?>" style="text-decoration: none; color: inherit; display: block; margin-bottom: 4px;">
                         <h3 style="margin: 0;"><?php echo htmlspecialchars($contact['name']); ?></h3>
                     </a>
                     <span class="cc-role"><?php echo htmlspecialchars($contact['role']); ?></span>
