@@ -229,6 +229,138 @@ class MessageController extends Controller
             $db->commit();
             \App\Helpers\Cache::invalidateConversationDashboardCache((int)$conversationId, $workspaceId);
 
+            // Check if ChatRox AI should respond
+            $aiResponsePayload = null;
+            
+            // 1. Fetch AI User & Member ID
+            $stmtAi = $db->prepare("
+                SELECT wm.id AS member_id, u.id AS user_id
+                FROM workspace_members wm
+                JOIN users u ON u.id = wm.user_id
+                WHERE wm.workspace_id = ? AND u.username = 'ai' AND wm.status = 'active'
+                LIMIT 1
+            ");
+            $stmtAi->execute([$workspaceId]);
+            $aiData = $stmtAi->fetch(PDO::FETCH_ASSOC);
+
+            if ($aiData) {
+                $aiMemberId = (int)$aiData['member_id'];
+                
+                // Determine if this is a DM with AI or a mention of AI in a channel
+                $shouldAiRespond = false;
+                if ($conversation['type'] === 'dm') {
+                    // Check if AI is a participant in this conversation
+                    $stmtParticipant = $db->prepare("
+                        SELECT id FROM conversation_participants 
+                        WHERE conversation_id = ? AND workspace_member_id = ? AND left_at IS NULL
+                        LIMIT 1
+                    ");
+                    $stmtParticipant->execute([$conversationId, $aiMemberId]);
+                    if ($stmtParticipant->fetch()) {
+                        $shouldAiRespond = true;
+                    }
+                } else {
+                    // Check if the message body mentions @ai or @chatrox-ai
+                    if (
+                        strpos($body, 'data-member-id="' . $aiMemberId . '"') !== false ||
+                        preg_match('/\b@ai\b/i', $body) ||
+                        preg_match('/\b@chatrox-ai\b/i', $body)
+                    ) {
+                        $shouldAiRespond = true;
+                    }
+                }
+
+                if ($shouldAiRespond) {
+                    // Generate AI response
+                    $aiTextHtml = \App\Services\AiService::generateResponse($workspaceId, (int)$conversationId, $memberId, $body, $aiMemberId);
+                    
+                    // Insert the AI's response message in DB
+                    $db->beginTransaction();
+                    try {
+                        $stmtAiMsg = $db->prepare("
+                            INSERT INTO messages (workspace_id, conversation_id, sender_id, body, message_type)
+                            VALUES (?, ?, ?, ?, 'text')
+                        ");
+                        $stmtAiMsg->execute([
+                            $workspaceId,
+                            $conversationId,
+                            $aiMemberId,
+                            $aiTextHtml
+                        ]);
+                        $aiMessageId = $db->lastInsertId();
+
+                        // Update cursor for AI
+                        $stmtAiCursor = $db->prepare("
+                            INSERT INTO conversation_read_cursors (workspace_member_id, conversation_id, last_read_message_id)
+                            VALUES (?, ?, ?)
+                            ON DUPLICATE KEY UPDATE 
+                                last_read_message_id = VALUES(last_read_message_id),
+                                last_read_at = CURRENT_TIMESTAMP(3)
+                        ");
+                        $stmtAiCursor->execute([$aiMemberId, $conversationId, $aiMessageId]);
+
+                        // DM delivery state
+                        $aiState = 'sent';
+                        if ($conversation['type'] === 'dm') {
+                            $stmtUserPresence = $db->prepare("
+                                SELECT status FROM user_presence WHERE user_id = ?
+                            ");
+                            $stmtUserPresence->execute([$user['id'] ?? 0]);
+                            $userPres = $stmtUserPresence->fetch(PDO::FETCH_ASSOC);
+                            $aiState = ($userPres && $userPres['status'] === 'online') ? 'delivered' : 'sent';
+
+                            $stmtAiDelivery = $db->prepare("
+                                INSERT INTO message_delivery_states (message_id, recipient_member_id, state)
+                                VALUES (?, ?, ?)
+                            ");
+                            $stmtAiDelivery->execute([$aiMessageId, $memberId, $aiState]);
+                        }
+
+                        $db->commit();
+
+                        // Fetch detailed AI message payload to return to client
+                        $stmtAiDetails = $db->prepare("
+                            SELECT m.*, 
+                                   u.first_name, u.last_name, u.avatar_path, u.username AS sender_username,
+                                   CONCAT(u.first_name, ' ', u.last_name) AS sender_name
+                            FROM messages m
+                            JOIN workspace_members wm ON wm.id = m.sender_id
+                            JOIN users u ON u.id = wm.user_id
+                            WHERE m.id = ?
+                        ");
+                        $stmtAiDetails->execute([$aiMessageId]);
+                        $aiMsgDetails = $stmtAiDetails->fetch(PDO::FETCH_ASSOC);
+
+                        if ($aiMsgDetails) {
+                            $aiResponsePayload = [
+                                'id' => (int)$aiMsgDetails['id'],
+                                'conversation_id' => (int)$aiMsgDetails['conversation_id'],
+                                'conversation_type' => $conversation['type'],
+                                'channel_id' => $conversation['channel_id'] ?? null,
+                                'channel_name' => $channelName ?? null,
+                                'channel_slug' => $channelSlug ?? null,
+                                'sender_id' => (int)$aiMsgDetails['sender_id'],
+                                'sender_name' => $aiMsgDetails['sender_name'],
+                                'sender_avatar' => $aiMsgDetails['avatar_path'],
+                                'sender_username' => $aiMsgDetails['sender_username'],
+                                'recipient_username' => $user['username'] ?? null,
+                                'mentioned_ids' => [],
+                                'body' => $aiMsgDetails['body'],
+                                'message_type' => 'text',
+                                'reply_to_id' => null,
+                                'created_at' => $aiMsgDetails['created_at'],
+                                'time_label' => date('h:i A', strtotime($aiMsgDetails['created_at'])),
+                                'attachments' => [],
+                                'read_status' => $aiState
+                            ];
+                        }
+                    } catch (\Throwable $aiEx) {
+                        $db->rollBack();
+                        \App\Core\ErrorHandler::logError($aiEx);
+                    }
+                }
+            }
+
             // Prepare JSON payload for return and websockets
             $stmtMsg = $db->prepare("
                 SELECT m.*, 
@@ -304,6 +436,10 @@ class MessageController extends Controller
                     'read_status' => $state ?? 'sent'
                 ]
             ];
+
+            if ($aiResponsePayload !== null) {
+                $response['ai_response'] = $aiResponsePayload;
+            }
 
             $this->jsonResponse($response);
 

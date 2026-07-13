@@ -32,6 +32,7 @@ define('DB_NAME', $_ENV['DB_DATABASE'] ?? $_ENV['DB_NAME'] ?? '');
 define('DB_TIMEZONE', $_ENV['DB_TIMEZONE'] ?? '+05:00');
 
 define('GIPHY_API_KEY', $_ENV['GIPHY_API_KEY'] ?? '');
+define('GEMINI_API_KEY', $_ENV['GEMINI_API_KEY'] ?? '');
 
 define('MAX_FILE_SIZE_BYTES', (int)($_ENV['MAX_FILE_SIZE_MB'] ?? 40) * 1024 * 1024);
 

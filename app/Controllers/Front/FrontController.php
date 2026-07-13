@@ -14,6 +14,65 @@ class FrontController extends Controller
         if (!Session::isLoggedIn()) {
             $this->redirect('/login');
         }
+        $this->ensureAiUserExists();
+    }
+
+    protected function ensureAiUserExists(): void
+    {
+        $user = Session::user();
+        $workspaceId = (int)($user['workspace_id'] ?? 0);
+        if ($workspaceId === 0) {
+            return;
+        }
+
+        $db = \App\Core\Model::db();
+        
+        try {
+            // 1. Ensure User exists in 'users' table
+            $stmtUser = $db->prepare("SELECT id FROM users WHERE username = 'ai' LIMIT 1");
+            $stmtUser->execute();
+            $aiUserId = $stmtUser->fetchColumn();
+
+            if (!$aiUserId) {
+                // Create the AI user
+                $stmtInsertUser = $db->prepare("
+                    INSERT INTO users (email, username, password_hash, first_name, last_name, bio, avatar_path)
+                    VALUES ('ai@chatrox.com', 'ai', '*', 'ChatRox', 'AI', 'Your intelligent workspace assistant, powered by Gemini.', 'assets/images/logo.png')
+                ");
+                $stmtInsertUser->execute();
+                $aiUserId = (int)$db->lastInsertId();
+
+                // Set AI preference
+                $stmtPrefs = $db->prepare("
+                    INSERT INTO user_preferences (user_id, theme_color, timezone)
+                    VALUES (?, 'indigo', 'UTC')
+                ");
+                $stmtPrefs->execute([$aiUserId]);
+
+                // Set presence online
+                $stmtPresence = $db->prepare("
+                    INSERT INTO user_presence (user_id, status)
+                    VALUES (?, 'online')
+                    ON DUPLICATE KEY UPDATE status = 'online'
+                ");
+                $stmtPresence->execute([$aiUserId]);
+            }
+
+            // 2. Ensure AI is in workspace_members
+            $stmtMember = $db->prepare("SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ? LIMIT 1");
+            $stmtMember->execute([$workspaceId, $aiUserId]);
+            $aiMemberId = $stmtMember->fetchColumn();
+
+            if (!$aiMemberId) {
+                $stmtInsertMember = $db->prepare("
+                    INSERT INTO workspace_members (workspace_id, user_id, role, job_title, status)
+                    VALUES (?, ?, 'member', 'AI Assistant', 'active')
+                ");
+                $stmtInsertMember->execute([$workspaceId, $aiUserId]);
+            }
+        } catch (\Throwable $e) {
+            \App\Core\ErrorHandler::logError($e);
+        }
     }
 
     protected function renderApp(string $activeTab, array $viewData = [], ?string $contentView = null): void

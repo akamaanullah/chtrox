@@ -1082,6 +1082,19 @@
                     } else {
                         finalizeOutgoingMessage(resData.message, activeConversationId);
                     }
+                    if (resData.ai_response) {
+                        var aiMsg = resData.ai_response;
+                        var aiBubbleContent = buildOutgoingBubbleContent(aiMsg);
+                        var aiBubbleClasses = getMessageBubbleClasses(aiMsg);
+                        renderMessage('dm-msg-' + aiMsg.id, aiBubbleContent, aiBubbleClasses, aiMsg.time_label, 'them', null, aiMsg.created_at);
+                        
+                        if (window.ChatRoxWS) {
+                            window.ChatRoxWS.broadcast(activeConversationId, 'new_message', aiMsg);
+                        }
+                        if (window.highlightCodeBlocks) {
+                            window.highlightCodeBlocks(dmChatMessages);
+                        }
+                    }
                     return;
                 }
                 markPendingFailed(pendingId, resData.message || resData.error || 'Failed to send message.');

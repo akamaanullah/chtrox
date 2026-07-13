@@ -1270,6 +1270,23 @@
                     } else {
                         finalizeOutgoingMessage(resData.message);
                     }
+                    if (resData.ai_response) {
+                        var aiMsg = resData.ai_response;
+                        var aiBubbleContent = buildMessageBubbleContent(aiMsg);
+                        var aiBubbleClasses = getMessageBubbleClasses(aiMsg);
+                        renderMessage('dm-msg-' + aiMsg.id, aiBubbleContent, aiBubbleClasses, aiMsg.time_label, 'them', null, aiMsg.created_at);
+                        
+                        var activeWithUsername = chatScreen ? chatScreen.dataset.withUsername : null;
+                        if (activeWithUsername) {
+                            updateSidebarItem(activeWithUsername, aiMsg.body || '', aiMsg.time_label, 'them', null);
+                        }
+                        if (window.ChatRoxWS) {
+                            window.ChatRoxWS.broadcast(conversationId, 'new_message', aiMsg);
+                        }
+                        if (window.highlightCodeBlocks) {
+                            window.highlightCodeBlocks(dmChatMessages);
+                        }
+                    }
                     return;
                 }
                 markPendingFailed(pendingId, resData.message || resData.error || 'Failed to send message.');
